@@ -45,7 +45,8 @@ jobs:
             protobuf-compiler libprotobuf-dev libssl-dev openssl \
             libngtcp2-dev libngtcp2-crypto-ossl-dev \
             wayland-protocols libwayland-dev libxkbcommon-dev \
-            libdrm-dev libva-dev libgbm-dev libx264-dev libzstd-dev \
+            libdrm-dev libva-dev libgbm-dev libegl-dev libgles-dev libx264-dev libzstd-dev \
+            libtomlplusplus-dev \
             libpipewire-0.3-dev libopus-dev \
             libei-dev libsystemd-dev \
             libsdl3-dev libavcodec-dev libavutil-dev libvulkan-dev glslang-tools \
