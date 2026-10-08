@@ -11,7 +11,7 @@ Limitations section.
   `plasmalogin` and `plasmalogin-autologin`, aren't in
   `DEFAULT_SERVICES`. And outside Debian nothing hooks ghostlogin in:
   docs/install/host.md should tell the admin which line to add to the
-  display manager's stack (pc03 and viper, on CachyOS, have none).
+  display manager's stack.
 
 ## Veil
 
