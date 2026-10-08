@@ -32,8 +32,10 @@ Prerequisites and the build commands are in the
   MIT. Files that can't carry a header are covered by `REUSE.toml`; check
   with `reuse lint`.
 <!-- REUSE-IgnoreEnd -->
-- No compatibility shims for old wire formats or config: ghost has not
-  been released, so change every end together.
+- ghost has been released: hosts and clients of different versions
+  meet. A change to the wire format bumps the ALPN
+  ([gdp-spec.md §16](docs/spec/gdp-spec.md)), and existing config files
+  keep working.
 
 ## Comments
 
