@@ -134,7 +134,7 @@ struct Fixture {
 		client->net.remote = ipv4("127.0.0.1", sink.local().port());
 		UdpSocket socket;
 		TlsContext tls;
-		if (!socket.connect_to(client->net.remote) || !tls.init_client("gdp/1", false) ||
+		if (!socket.connect_to(client->net.remote) || !tls.init_client("gdp/1", CaTrust{}) ||
 			!client->start_client(&socket, "fuzz", tls, CongestionControl::kCubic)) {
 			abort();
 		}
