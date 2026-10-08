@@ -1,0 +1,18 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# Name the host wisp-<mac of the first wired NIC>, e.g. wisp-525400123456,
+# so each client is identifiable in DHCP leases and logs.
+for n in /sys/class/net/*; do
+    [ -e "$n/device" ] || continue          # skip lo, bridges, veth
+    [ "$(cat "$n/type")" = 1 ] || continue  # ethernet only
+    mac=$(tr -d ':' < "$n/address")
+    [ -n "$mac" ] || continue
+    name="wisp-$mac"
+    hostname "$name"
+    echo "$name" > /etc/hostname
+    sed -i '/ wisp-[0-9a-f]\{12\}$/d' /etc/hosts
+    echo "127.0.1.1 $name" >> /etc/hosts
+    exit 0
+done
+exit 0   # no NIC found: keep the default name

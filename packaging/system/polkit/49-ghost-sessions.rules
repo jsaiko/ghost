@@ -1,0 +1,116 @@
+// Ghost session policy (docs/design/login-and-sessions.md#polkit). A ghost session is opened by
+// host/ghostseat and is always Remote=yes (pam_session.rs) and seatless,
+// so polkit's normal allow_active/allow_inactive grants -- both already
+// "yes" for network-control on a LOCAL session -- never apply, and every
+// request falls through to allow_any (auth_admin, or in some cases an
+// outright "yes" -- see the login1 block below) instead.
+//
+// Two families of action are denied outright here rather than left to that
+// default, for two different reasons:
+//
+// - org.freedesktop.NetworkManager.network-control: falls through to
+//   auth_admin, which pops an authentication-agent dialog nobody in a
+//   headless session can ever answer: plasmashell's NetworkManager applet
+//   asks for it on ordinary startup. It's also NetworkManager's
+//   single host-wide "manage connections" gate (activate/deactivate, add
+//   connections, toggle radios) with no per-interface scoping, so granting
+//   it would let a remote ghost session reconfigure any interface on the
+//   host, not something private to that session.
+// - org.freedesktop.login1.{power-off,reboot,halt,suspend,hibernate}* (and
+//   their -multiple-sessions/-ignore-inhibit variants): logind's default
+//   policy allows these to the sole active session with *no* auth at all,
+//   so a session type that runs a real desktop's own shutdown/reboot menu
+//   inside a captured real desktop (e.g. packaging/ghost/sessions/plasma-screencast)
+//   could actually power off or reboot the physical host, not just its own
+//   session -- worse than the NetworkManager case, and not something
+//   falling through to auth_admin would even prevent when no other session
+//   happens to be active. When another session *is* active it instead
+//   falls through to auth_admin same as above, hanging the same
+//   unanswerable-dialog way (kwin may already have exited as part of the
+//   logout sequence that invoked it, leaving the authentication agent's
+//   dialog nothing to render on, so plasma-shutdown blocks forever).
+//   Either way the fix is the same: never let a ghost session reach a real
+//   power-state change on the host it happens to be hosted on.
+//
+// In both cases, an explicit deny here means polkit answers immediately
+// without invoking the authentication agent at all -- no dialog, not even
+// briefly, and no window where "nobody else is logged in" would let it
+// through unauthenticated.
+var GHOST_DENIED_ACTIONS = [
+    "org.freedesktop.NetworkManager.network-control",
+    "org.freedesktop.login1.power-off",
+    "org.freedesktop.login1.power-off-ignore-inhibit",
+    "org.freedesktop.login1.power-off-multiple-sessions",
+    "org.freedesktop.login1.reboot",
+    "org.freedesktop.login1.reboot-ignore-inhibit",
+    "org.freedesktop.login1.reboot-multiple-sessions",
+    "org.freedesktop.login1.halt",
+    "org.freedesktop.login1.halt-ignore-inhibit",
+    "org.freedesktop.login1.halt-multiple-sessions",
+    "org.freedesktop.login1.suspend",
+    "org.freedesktop.login1.suspend-ignore-inhibit",
+    "org.freedesktop.login1.suspend-multiple-sessions",
+    "org.freedesktop.login1.hibernate",
+    "org.freedesktop.login1.hibernate-ignore-inhibit",
+    "org.freedesktop.login1.hibernate-multiple-sessions",
+];
+
+polkit.addRule(function(action, subject) {
+    if (GHOST_DENIED_ACTIONS.indexOf(action.id) == -1) {
+        return null;
+    }
+    // subject.session is unconditionally null for these (headless, seatless)
+    // sessions, so identify the session via subject.user instead. Session
+    // ids and their Service are read from logind's own on-disk session
+    // state (/run/systemd/sessions/<id>, world-readable key=value files),
+    // never through `loginctl`/busctl: for the login1.* actions in
+    // GHOST_DENIED_ACTIONS this rule can be invoked *while logind itself is
+    // mid-handling the very method call that needs the authorization* (its
+    // Can{PowerOff,Reboot,...} checks -- which is also how denying these
+    // hides the corresponding buttons from KDE's logout screen). A
+    // synchronous call back into logind from here blocks logind's single
+    // dispatch loop waiting on a reply that logind itself must send,
+    // wedging org.freedesktop.login1 host-wide, idle in poll() rather than
+    // visibly stuck. Plain file reads carry no such risk. Safe under
+    // ghostd's "one session per uid" invariant (host/ghostd/src/session.rs): whichever of this
+    // user's sessions was opened by ghostseat is the one that matters, and
+    // there's at most one. Never let a shape polkit didn't expect (missing
+    // user, unreadable directory, a session file vanishing between listing
+    // and reading it) propagate as an exception -- that leaves the actual
+    // authorization decision to whatever polkit does with a rule that
+    // errored instead of one that just declined to answer.
+    try {
+        var uid = polkit.spawn(["id", "-u", subject.user]).trim();
+        if (!/^[0-9]+$/.test(uid)) {
+            return null;
+        }
+        var names = polkit.spawn(["ls", "/run/systemd/sessions/"]).split("\n");
+        for (var i = 0; i < names.length; i++) {
+            var name = names[i].trim();
+            if (!name) {
+                continue;
+            }
+            var contents;
+            try {
+                contents = polkit.spawn(["cat", "/run/systemd/sessions/" + name]);
+            } catch (e2) {
+                continue; // session ended between the ls and this cat
+            }
+            var lines = contents.split("\n");
+            var matchesUid = false, isGhostseat = false;
+            for (var j = 0; j < lines.length; j++) {
+                if (lines[j] == "UID=" + uid) {
+                    matchesUid = true;
+                } else if (lines[j] == "SERVICE=ghostseat") {
+                    isGhostseat = true;
+                }
+            }
+            if (matchesUid && isGhostseat) {
+                return polkit.Result.NO;
+            }
+        }
+    } catch (e) {
+        return null;
+    }
+    return null;
+});

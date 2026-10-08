@@ -1,0 +1,18 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<h1>Audit log</h1>
+<table class="audit">
+  <thead><tr><th>Time (UTC)</th><th>Who</th><th>What</th><th>Device</th><th>Detail</th><th>From</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+  <tr><td class="mono small">{{ e.at }}</td><td>{{ e.actor }}</td><td>{{ e.action }}</td><td>{{ e.device }}</td><td>{{ e.detail }}</td><td class="mono small">{{ e.client_address }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if entries.is_empty() %}<p class="empty">Nothing yet.</p>{% endif %}
+{% if let Some(before) = older %}<p><a href="/admin/audit?before={{ before }}">Older</a></p>{% endif %}
+{% endblock %}

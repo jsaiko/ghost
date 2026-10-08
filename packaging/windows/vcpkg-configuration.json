@@ -1,0 +1,6 @@
+{
+  "$comment": "ports/ holds what the vcpkg registry lacks: pyrowave.",
+  "overlay-ports": [
+    "./ports"
+  ]
+}

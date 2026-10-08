@@ -1,0 +1,129 @@
+// SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+// SPDX-License-Identifier: MIT
+
+// Wisp thin clients reporting to Veil (docs/design/wisp.md).
+// wisp-agent opens one QUIC connection to Veil's lobby port with ALPN
+// `wisp/1`, pinned to the same certificate as the greeter's logins, and one
+// bidi stream on it that carries length-prefixed WispEnvelope frames (the
+// lobby's framing, gdp-spec.md §3.1) for as long as the client is up. The
+// connection itself is the client's online state.
+//
+// C++ in wisp-agent via libgdp, Rust in veild via host/ipc.
+syntax = "proto3";
+package gdp.wisp;
+
+message WispEnvelope {
+  oneof msg {
+    WispHello hello = 1;
+    WispWelcome welcome = 2;
+    WispProfile profile = 3;
+    WispSession session = 4;
+    WispCommand command = 5;
+  }
+}
+
+// Client -> Veil, the first frame. A wrong `key` closes the connection.
+message WispHello {
+  // The boot server's wisp_key= (WISP_KEY): one key shared by every client
+  // that can reach the boot network, not a per-device identity.
+  string key = 1;
+  // The client's identity: the MAC address of the interface that holds the
+  // default route, lowercase with colons.
+  string mac = 2;
+  string hostname = 3;
+  repeated string ips = 4;       // the client's own addresses, no loopback
+  string arch = 5;               // uname -m
+  string image_version = 6;      // /etc/wisp-release
+  // Seconds since boot, not a timestamp: the image has no battery-backed
+  // clock worth trusting, so Veil dates everything on its own clock.
+  uint64 uptime_secs = 7;
+  SystemInfo system = 8;
+  WispSession session = 9;       // set if a session is already running
+}
+
+message SystemInfo {
+  string cpu_model = 1;
+  uint32 cpu_cores = 2;
+  uint64 memory_bytes = 3;
+  repeated Gpu gpus = 4;
+  // The decode paths spectre found working, "<path>:<codec>": e.g.
+  // "vulkan:av1", "vaapi:h264", "software:h264".
+  repeated string hw_decode = 5;
+  repeated Display displays = 6;
+  uint32 nic_speed_mbps = 7;     // 0: unknown (Wi-Fi, or not reported)
+}
+
+message Gpu {
+  string name = 1;               // from pci.ids, or "vendor:device" in hex
+  string driver = 2;             // the kernel driver, e.g. "amdgpu"
+}
+
+message Display {
+  string connector = 1;          // e.g. "HDMI-A-1"
+  uint32 width = 2;
+  uint32 height = 3;
+  uint32 refresh_mhz = 4;        // millihertz: 59940 for 59.94 Hz; 0 unknown
+}
+
+// Veil -> client, in answer to a good hello: the current profile.
+message WispWelcome {
+  ClientProfile profile = 1;
+}
+
+// Veil -> client, whenever an administrator saves a new profile. Its
+// spectre settings apply at the next spectre launch, never to a running
+// one; display_sleep_minutes at once.
+message WispProfile {
+  ClientProfile profile = 1;
+}
+
+// Client -> Veil, when a session starts or ends. All empty: no session.
+message WispSession {
+  string user = 1;
+  string host_name = 2;
+}
+
+// Veil -> client, when an administrator acts on this client from the admin
+// UI. Unacknowledged: the client's connection dropping (power) or its next
+// WispSession (log out) is the answer.
+message WispCommand {
+  WispAction action = 1;
+}
+
+enum WispAction {
+  WISP_ACTION_UNSPECIFIED = 0;  // ignored
+  // End the running session the way spectre's own "End session" does (a
+  // LogoutRequest: the desktop session on the host ends, not just this
+  // connection), then back to the greeter. Nothing without a session.
+  WISP_ACTION_LOG_OUT = 1;
+  WISP_ACTION_REBOOT = 2;
+  WISP_ACTION_POWER_OFF = 3;
+}
+
+// The settings every thin client applies: spectre's, mirroring
+// spectre-qt's Settings dialog minus what a kiosk makes moot (fullscreen,
+// kiosk itself, and following the window, which never changes size), in SpectreSettings' values
+// (client/spectre-settings/spectre_settings.h), and the client's own.
+// Veil always sends every field, so proto3's zero defaults never stand in
+// for the real ones.
+message ClientProfile {
+  // spectre's.
+  string resolution = 1;         // "WIDTHxHEIGHT"; empty: the client's screen
+  string view = 2;               // "fit", "actual", or empty: spectre's own
+  string preferred_decoder = 3;  // "vulkan", "native" or "software"
+  string preferred_codec = 4;    // a gdp/video_codec.hpp token, or empty: auto
+  bool lossless_refinement = 5;  // start sessions lossless; false: spectre -R off
+  bool allow_pyrowave = 6;
+  string network_profile = 7;    // "auto", "lan", "internet" or "mobile"
+  bool forward_gamepads = 8;
+  // Send the client's microphone to the host (spectre -M).
+  bool microphone = 9;
+  // Run spectre with SPECTRE_LOG=debug: its debug lines reach the kiosk's
+  // journal and `wraith --report`'s client.txt (gdp-spec.md §7.11).
+  bool debug_logging = 10;
+
+  // The client's own: turn the display off after this many minutes
+  // without keyboard, mouse or gamepad input, in a session or not.
+  // 0: never.
+  uint32 display_sleep_minutes = 11;
+}

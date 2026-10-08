@@ -1,0 +1,23 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# Runs a full Plasma session as the real, top-level compositor on kwin's
+# virtual (headless) backend (docs/design/capture-backends.md) -- wraith
+# captures kwin's output over PipeWire and injects input over libei.
+# startplasma-wayland sets up its own session environment; the variable
+# below reaches kwin through the drop-in in
+# packaging/system/systemd/plasma-kwin_wayland.service.d.
+
+export XDG_GHOST_KWIN_ARGS=--virtual
+
+# kded6's bluedevil activates obex.service on startup; on a host whose real
+# desktop already owns the Bluetooth adapter's OBEX profiles that fails and
+# systemd restart-loops it. Masked for this session only (--runtime) and
+# unmasked on the way out, since a console login by the same user can
+# inherit this user manager (docs/design/login-and-sessions.md#one-graphical-login-per-user). The no-op
+# trap keeps this shell alive through the SIGTERM wraith sends the whole
+# process group, so the unmask still runs.
+systemctl --user mask --runtime --now obex.service
+trap : TERM
+startplasma-wayland
+systemctl --user unmask --runtime obex.service

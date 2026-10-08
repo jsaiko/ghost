@@ -1,0 +1,2 @@
+host/target/release/veild usr/bin
+packaging/config/veild.toml etc/ghost

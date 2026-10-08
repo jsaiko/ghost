@@ -1,0 +1,113 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> -->
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Veil</title>
+<link rel="stylesheet" href="/app/app.css">
+<script type="module" src="/app/main.js"></script>
+</head>
+<body>
+<header id="topbar" hidden>
+  <span class="brand">Veil</span>
+  <nav><a id="tab-desktops" href="/">Desktops</a><a id="tab-settings" href="/settings">Settings</a></nav>
+  <div class="whoami">
+    <a id="admin-link" href="/admin/hosts" hidden>Admin Interface</a>
+    <div class="user-menu">
+      <button type="button" class="user-badge" id="whoami" aria-haspopup="menu"></button>
+      <div class="user-menu-items" role="menu">
+        <button type="button" id="devices-back" role="menuitem">Sign out</button>
+      </div>
+    </div>
+  </div>
+</header>
+<main id="portal">
+  <section class="card" id="login-view" hidden>
+    <img class="logo" src="/app/veil-logo.png" alt="" width="200" height="200">
+    <h1>Veil</h1>
+    <p class="muted">Sign in to reach your desktop.</p>
+    <form id="login-form">
+      <label>Username <input id="username" autocomplete="username" required autofocus></label>
+      <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit">Sign in</button>
+    </form>
+  </section>
+
+  <section class="card" id="devices-view" hidden>
+    <h1>Choose a host</h1>
+    <ul id="device-list" class="tiles"></ul>
+    <p class="muted" id="no-devices" hidden>You have no hosts to connect to. Ask your administrator for access.</p>
+  </section>
+
+  <section class="card" id="password-view" hidden>
+    <h1 id="password-host"></h1>
+    <form id="password-form">
+      <label>Username <input id="host-username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label>Password <input id="host-password" type="password" autocomplete="current-password" required></label>
+      <button type="submit">Connect</button>
+    </form>
+    <button type="button" class="secondary" id="password-cancel">Back</button>
+  </section>
+
+  <section class="card" id="prompt-view" hidden>
+    <h1 id="prompt-host"></h1>
+    <form id="prompt-form">
+      <label><span id="prompt-text"></span> <input id="prompt-input" autocomplete="one-time-code" required></label>
+      <button type="submit">Continue</button>
+    </form>
+    <button type="button" class="secondary" id="prompt-back">Back</button>
+  </section>
+
+  <section class="card" id="types-view" hidden>
+    <h1 id="types-host"></h1>
+    <p class="muted">Start a new session. Choose a desktop:</p>
+    <ul id="type-list" class="choices"></ul>
+    <button type="button" class="secondary" id="types-back">Back</button>
+  </section>
+
+  <section class="card" id="settings-view" hidden>
+    <h1>Settings</h1>
+    <p class="muted">Saved in this browser only.</p>
+    <h2>Connection</h2>
+    <label class="check"><input type="checkbox" id="use-websocket"> Use the WebSocket fallback</label>
+    <p class="hint">Sessions normally use WebTransport (UDP) and switch to a WebSocket (TCP) by themselves if it fails. Turn this on where UDP is blocked or unreliable, to skip the attempt. A WebSocket stutters more on a lossy network.</p>
+    <h2>Video</h2>
+    <label class="check"><input type="checkbox" id="software-decode"> Decode video in software</label>
+    <p class="hint">Uses the CPU instead of the graphics card. Try it if the picture lags a few frames behind (typing shows up late) or looks broken; it costs more CPU at high resolutions.</p>
+  </section>
+
+  <section class="card" id="busy-view" hidden>
+    <div class="spinner"></div>
+    <p id="busy-text">Connecting…</p>
+  </section>
+
+  <p id="error" class="error" hidden></p>
+</main>
+
+<dialog id="notice">
+  <form method="dialog">
+    <p id="notice-text"></p>
+    <button type="submit" id="notice-ok">OK</button>
+  </form>
+</dialog>
+
+<div id="session-view" hidden>
+  <div id="toolbar">
+    <span id="session-title"></span>
+    <span class="spacer"></span>
+    <button type="button" id="btn-stats" title="Statistics (Ctrl+Alt+Shift+S)">Stats</button>
+    <button type="button" id="btn-lossless" title="Lossless: once part of the screen stops changing, the host re-sends it pixel-exact" aria-pressed="true" hidden>Lossless: On</button>
+    <button type="button" id="btn-capture" title="Capture the mouse, for games and 3D views (Scroll Lock or Ctrl+Alt+Shift+G releases it)">Capture Mouse</button>
+    <button type="button" id="btn-fullscreen" title="Fullscreen (Ctrl+Alt+Shift+F)">Fullscreen</button>
+    <button type="button" id="btn-logout" title="End the session: log out of the remote desktop">End Session</button>
+    <button type="button" id="btn-disconnect" title="Disconnect, leaving the session running (Ctrl+Alt+Shift+Q)">Disconnect</button>
+  </div>
+  <div id="stage"><canvas id="screen" tabindex="0"></canvas><canvas id="overlay"></canvas></div>
+  <img id="cursor" alt="" hidden>
+  <pre id="stats" hidden></pre>
+  <p id="session-status"></p>
+</div>
+</body>
+</html>

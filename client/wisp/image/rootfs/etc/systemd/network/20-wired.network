@@ -1,0 +1,13 @@
+[Match]
+Name=en* eth*
+
+[Network]
+DHCP=yes
+
+[DHCPv4]
+# Veil hands out hosts by whatever name they joined with, often a bare one
+# ("desk1") that only resolves with the site's DHCP search domain.
+UseDomains=yes
+
+[IPv6AcceptRA]
+UseDomains=yes

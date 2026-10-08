@@ -1,0 +1,6 @@
+Name: Ghost: a console login ends the same user's ghost session
+Default: yes
+Priority: 192
+Account-Type: Additional
+Account:
+	optional	pam_exec.so quiet @GHOST_LIBEXECDIR@/ghostlogin

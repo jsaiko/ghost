@@ -1,0 +1,12 @@
+[package]
+name = "gdpnet"
+version = "0.6.66"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+sha2 = "0.10"
+anyhow = "1"
+quinn = "0.11"
+socket2 = "0.6"

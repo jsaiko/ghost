@@ -1,0 +1,7 @@
+[Session]
+Enabled=true
+Name=KDE Plasma
+Backend=screencast-kwin
+Exec=@GHOST_LIBEXECDIR@/sessions/plasma-screencast
+TryExec=kwin_wayland
+LogoutExec=qdbus6 org.kde.Shutdown /Shutdown logout

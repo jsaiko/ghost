@@ -1,0 +1,149 @@
+# Builds the whole tree (libgdp, wraith, spectre, spectre-qt, the host/
+# Rust workspace) and runs every ctest target plus the workspace's cargo
+# tests, once plainly and once under GHOST_ENABLE_ASAN (AddressSanitizer +
+# UBSan), which is what the design plan asked for from day one.
+#
+# Runs in an Ubuntu 26.04 container: the first Ubuntu with ngtcp2's
+# OpenSSL crypto helper (libngtcp2-crypto-ossl-dev).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: build + test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debug
+            asan: OFF
+            fuzz: OFF
+          - name: asan
+            asan: ON
+            fuzz: OFF
+          # libgdp's libFuzzer targets (clang), each run for a minute: the
+          # parsers untrusted bytes reach, and the QUIC server's packet
+          # handling (fuzz/server_demux_fuzzer.cpp).
+          - name: fuzz
+            asan: OFF
+            fuzz: ON
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential clang cmake ninja-build pkg-config git curl ca-certificates \
+            protobuf-compiler libprotobuf-dev libssl-dev openssl \
+            libngtcp2-dev libngtcp2-crypto-ossl-dev \
+            wayland-protocols libwayland-dev libxkbcommon-dev \
+            libdrm-dev libva-dev libgbm-dev libx264-dev libzstd-dev \
+            libpipewire-0.3-dev libopus-dev \
+            libei-dev libsystemd-dev \
+            libsdl3-dev libavcodec-dev libavutil-dev libvulkan-dev glslang-tools \
+            qt6-base-dev libpam0g-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Configure
+        if: matrix.fuzz == 'OFF'
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DGHOST_ENABLE_ASAN=${{ matrix.asan }}
+
+      - name: Build
+        if: matrix.fuzz == 'OFF'
+        run: cmake --build build
+
+      - name: Build fuzzers
+        if: matrix.fuzz == 'ON'
+        run: |
+          CC=clang CXX=clang++ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DGDP_ENABLE_FUZZING=ON
+          cmake --build build --target gdp_datagram_fuzzer gdp_refine_fuzzer gdp_session_control_fuzzer gdp_server_demux_fuzzer
+
+      - name: Fuzz
+        if: matrix.fuzz == 'ON'
+        run: |
+          for f in datagram refine session_control server_demux; do
+            mkdir -p corpus/$f
+            ./build/bin/gdp_${f}_fuzzer corpus/$f -max_total_time=60 -max_len=4096 -rss_limit_mb=4096
+          done
+
+      - name: ctest
+        if: matrix.fuzz == 'OFF'
+        # transport_test binds a local UDP port and needs the openssl CLI
+        # for its throwaway cert; both are available here.
+        run: ctest --test-dir build --output-on-failure
+
+      - name: cargo test (workspace)
+        if: matrix.fuzz == 'OFF'
+        working-directory: host
+        run: cargo test --workspace
+
+  # The client alone (libgdp, spectre, spectre-qt) on macOS -- see
+  # packaging/macos/README.md. vcpkg is pinned to a known-good commit and
+  # its binary packages cached, since building FFmpeg and the rest from
+  # scratch dominates the job otherwise. No GPU work runs here: spectre's
+  # tests are the jitter buffer and font ones, and MoltenVK is only needed
+  # to actually present, so it isn't installed.
+  macos-client:
+    name: macOS client (build + test)
+    runs-on: macos-14
+    env:
+      VCPKG_COMMIT: 07f4812200df3d3c931c0c8a6081d3b21fe2bf9f
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install nasm ninja pkgconf
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.8.3
+          cache: true
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-macos-arm64-${{ env.VCPKG_COMMIT }}-${{ hashFiles('packaging/macos/vcpkg.json') }}
+          restore-keys: vcpkg-macos-arm64-${{ env.VCPKG_COMMIT }}-
+
+      - name: Set up vcpkg
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          git -C "$RUNNER_TEMP/vcpkg" checkout "$VCPKG_COMMIT"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_TOOLCHAIN_FILE=$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_MANIFEST_DIR=$GITHUB_WORKSPACE/packaging/macos
+          -DVCPKG_TARGET_TRIPLET=arm64-osx-dynamic
+          -DVCPKG_HOST_TRIPLET=arm64-osx
+          -DCMAKE_PREFIX_PATH=$QT_ROOT_DIR
+
+      - name: Build
+        run: cmake --build build
+
+      - name: ctest
+        run: ctest --test-dir build --output-on-failure

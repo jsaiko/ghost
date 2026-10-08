@@ -1,0 +1,103 @@
+# ghostd configuration (docs/reference/configuration.md).
+#
+# Every setting is shown commented out at its built-in default; uncomment
+# and edit to change one. ghostd reads this file, then
+# /etc/ghost/ghostd.d/*.toml in name order (each merged key by key over
+# the last), then its command-line flags, which win. Both must be owned
+# by root and not writable by group or others.
+#
+# Check a change with `ghostd -t`; print the settings ghostd would run
+# with, after all of the above, with `ghostd -T`. Apply with
+# `systemctl restart ghostd` -- running sessions survive a restart.
+#
+# Durations are sshd-style strings ("90s", "10m", "1h") or plain seconds.
+
+[lobby]
+# The address to listen on. Empty: every address, IPv4 and IPv6. An IPv4
+# address serves IPv4 only, an IPv6 one IPv6 only -- for a host with a
+# management interface the lobby should stay off.
+#address = ""
+# UDP port spectre connects to first. The firewall must allow it.
+#port = 4442
+
+# The host's identity certificate and its key (PEM), readable by the
+# ghost group ghostd runs in. `make install` generates the pair once;
+# replacing it makes every client warn that the host's certificate changed.
+#cert = "/etc/ghost/host-cert.pem"
+#key = "/etc/ghost/host-key.pem"
+
+[sessions]
+# Each running session's wraith binds one UDP port from port_base through
+# port_base + max - 1 (default 14400-14463). The firewall must allow the
+# whole range. A login past `max` concurrent sessions fails as "host full".
+#port_base = 14400
+#max = 64
+
+# Session-type profiles (<id>.conf), checked before the shipped ones, so
+# a file here overrides or (if empty) hides a shipped type of that name.
+#dir = "/etc/ghost/sessions.d"
+
+# Session type offered to a user with no remembered choice.
+#default_type = "terminal"
+
+# Login policy and limits on connections that haven't authenticated yet,
+# borrowed from sshd with sshd's defaults (docs/design/preauth.md).
+# The sshd_config(5) equivalent of each is in brackets.
+[auth]
+# Let root log in [PermitRootLogin]. When off, a root login is refused
+# after the password check, exactly like a wrong password.
+#permit_root_login = false
+
+# Let accounts with an empty password log in [PermitEmptyPasswords], even
+# where the PAM stack says `nullok`.
+#permit_empty_passwords = false
+
+# From connecting to finishing authentication [LoginGraceTime]; 0 is no
+# limit.
+#login_grace_time = "2m"
+
+# Random early drop of unauthenticated connections [MaxStartups
+# start:rate:full]: from `start` of them on, refuse new ones with
+# probability `rate` percent, rising linearly to all of them at `full`.
+[auth.max_startups]
+#start = 10
+#rate = 30
+#full = 100
+
+# Per-address refusal after failed or abandoned logins
+# [PerSourcePenalties]. Each offense adds its time to the address's
+# penalty (never beyond `max`); once more than `min` is outstanding, the
+# address is refused until it runs out. IPv6 addresses count per /64.
+[auth.penalties]
+#enabled = true
+# A failed login, or a refused root login.
+#authfail = "5s"
+# A client that disconnected or broke the protocol before trying.
+#noauth = "1s"
+# A client that ran out login_grace_time.
+#grace_exceeded = "10s"
+#max = "10m"
+#min = "15s"
+
+# Membership of a Veil, the broker (docs/design/veil.md).
+# `ghostd join <veil> --token <token>` writes address, cert_sha256 and
+# device_id to /etc/ghost/ghostd.d/broker.toml; `ghostd leave` removes it.
+[broker]
+# Veil's lobby, "host" or "host:port".
+#address = ""
+# Veil's lobby certificate fingerprint, pinned at join.
+#cert_sha256 = ""
+# This host's id at Veil.
+#device_id = ""
+# Refuse direct logins: ghostd opens no lobby listener, so every login
+# goes through Veil and its entitlements can't be bypassed. Also what lets
+# ghostd and veild share one machine (both want UDP 4442).
+#broker_only = false
+
+[log]
+# Log filter for ghostd, in tracing's EnvFilter syntax: a level ("info",
+# "debug"), optionally with per-module ones ("info,ghostd::lobby=debug").
+# Output goes to the journal. A RUST_LOG environment variable overrides
+# this, for one-off runs. The ghostauth and ghostseat instances log at
+# info; a drop-in on their units setting RUST_LOG changes that.
+#level = "info"

@@ -1,0 +1,145 @@
+// SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+// SPDX-License-Identifier: GPL-3.0-only
+
+// ghostseat <-> wraith control socket, /run/ghost/<uid>.sock
+// (docs/design/login-and-sessions.md#the-control-socket): a handshake when
+// wraith starts, then one connection per request for the rest of the
+// session. Local IPC between the session's root process and the user's
+// wraith, framed like GDP's streams (gdp-spec.md §3.1). Anything running
+// as the user can connect, so ghostseat checks what it is asked for.
+syntax = "proto3";
+package ghost.control;
+
+message ControlEnvelope {
+  oneof msg {
+    SessionInit init = 1;
+    SessionReady ready = 2;
+    ControlError error = 3;
+    SessionEnded session_ended = 4;
+    CreateDevice create_device = 5;
+    DeviceCreated device_created = 6;
+    ViewerAttached viewer_attached = 7;
+    ViewerDetached viewer_detached = 8;
+    DeviceVerified device_verified = 9;
+  }
+}
+
+// ghostseat -> wraith, the first message once wraith connects.
+message SessionInit {
+  bytes session_secret = 1;     // keys the session-token HMAC, gdp-spec.md §4.8
+  // ghostd.toml's sessions.port_base through base + sessions.max - 1.
+  // wraith takes the first free port.
+  uint32 port_range_start = 2;
+  uint32 port_range_end = 3;    // inclusive
+  string session_type = 4;      // id of the sessions.d/*.conf profile to launch
+  // Whether CreateDevice can work on this host: /dev/uinput exists and the
+  // udev rule that keeps ghost's virtual devices off the console seat is
+  // installed. wraith offers the "gamepad" capability only when it is.
+  bool uinput_available = 5;
+  // ghostd.toml's sessions.dir, as ghostseat read it from the root-owned
+  // config and found it root-owned and not writable by group or others:
+  // wraith looks here for the session profile before the shipped
+  // directory, as ghostd did when it listed the types. Empty when the
+  // directory is missing or fails that check. wraith checks the profile
+  // it execs the same way, whoever named the directory.
+  string sessions_dir = 6;
+  // Whether CreateDevice can make KIND_HID devices: /dev/uhid exists and
+  // the udev rule is installed. wraith offers "hid" only when it is (and
+  // "gamepad" with it).
+  bool uhid_available = 7;
+}
+
+// wraith -> ghostseat, on a fresh connection, any time after SessionReady:
+// create a virtual input device for this session. ghostseat creates it
+// as root and replies with DeviceCreated *plus an fd as SCM_RIGHTS
+// ancillary data on the same sendmsg*: wraith's end of a SOCK_SEQPACKET
+// socketpair ghostseat relays to the device, checking each packet
+// (devices.rs) -- never the device's own fd, which could re-create it as
+// a keyboard. wraith writes events on that fd (and, for KIND_HID, reads
+// the driver's requests from it) and closes it to destroy the device;
+// there is no DestroyDevice. ghostseat chowns the device's nodes to this
+// session's uid as udev adds them.
+//
+// KIND_HID needs one more step: the host's driver binds to the device
+// only after DeviceCreated (its probe can ask for reports that only
+// wraith, through the fd, can answer), so ghostseat keeps the connection
+// open, checks what the driver made of the device, and then sends
+// DeviceVerified -- or a ControlError, having destroyed the device.
+// wraith answers the driver's requests meanwhile; input reports are held
+// back until DeviceVerified, by wraith and by the relay.
+message CreateDevice {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_GAMEPAD = 1;  // an Xbox-360-layout uinput gamepad
+    KIND_HID = 2;      // a uhid device with `hid`'s identity and descriptor
+  }
+  Kind kind = 1;
+  uint32 index = 2;  // slot, [0, 4): appears in the device's phys string
+  // KIND_GAMEPAD: for ghostseat's log line only; the device's own name is
+  // fixed. KIND_HID: the device's name (HidConnect.name).
+  string name = 3;
+  HidIdentity hid = 4;  // KIND_HID only
+}
+
+// gdp-spec.md §8.6's HidConnect, minus the slot and name.
+message HidIdentity {
+  uint32 bus = 1;
+  uint32 vendor_id = 2;
+  uint32 product_id = 3;
+  uint32 version = 4;
+  string uniq = 5;
+  bytes report_descriptor = 6;
+}
+
+// ghostseat -> wraith, the reply to CreateDevice. Carries the fd out of
+// band (see CreateDevice); a failure is a ControlError instead, with no fd.
+message DeviceCreated {
+  string node = 1;   // what the device became, for logs: the uinput sysname or the uhid phys
+}
+
+// ghostseat -> wraith, after DeviceCreated for KIND_HID: the driver bound
+// and every input device it made passed ghostseat's policy. Input reports
+// may flow from here on.
+message DeviceVerified {
+  string driver = 1;  // the driver that bound, for logs
+}
+
+// wraith -> ghostseat, once it has bound its GDP QUIC port and is ready
+// for spectre to connect.
+message SessionReady {
+  uint32 port = 1;
+  // Lowercase hex SHA-256 of the DER certificate wraith's GDP listener
+  // presents, a throwaway one generated at startup. ghostd relays it in
+  // Redirect.cert_sha256 (gdp-spec.md §2.3).
+  string cert_sha256 = 2;
+}
+
+message ControlError {
+  string message = 1;
+  // A gdp-spec.md §12 error code (lobby.proto's LobbyErrorCode) for
+  // ghostd to pass on to spectre in its LobbyError, e.g. HOST_FULL when
+  // wraith found every port in its range taken. 0 means a generic
+  // failure: ghostd reports SESSION_START_FAILED. A plain number rather
+  // than the enum so this file needn't import lobby.proto into wraith's
+  // separate codegen. Always 0 from ghostseat to wraith (CreateDevice).
+  uint32 code = 2;
+}
+
+// wraith(.service) -> ghostseat, sent once from wraith's own
+// `--session-ended <socket>` mode, run as an `ExecStopPost=-` on
+// wraith.service (packaging/system/systemd/wraith.service.in): this uid's
+// session is over. Carries systemd's verdict verbatim; ghostseat closes
+// the logind session either way and only logs it.
+message SessionEnded {
+  string result = 1;       // $SERVICE_RESULT: "success", "exit-code", "signal", ...
+  string exit_code = 2;    // $EXIT_CODE: "exited", "killed", "dumped"
+  string exit_status = 3;  // $EXIT_STATUS: numeric status, or a signal name
+}
+
+// wraith -> ghostseat, each on a fresh connection like CreateDevice, no
+// reply: a client has authenticated and become this session's viewer
+// (gdp-spec.md §6.4), or the viewer it had has gone. ghostseat passes it
+// on to ghostd, which records it for Veil. A lost Detached is corrected
+// by the session's end.
+message ViewerAttached {}
+message ViewerDetached {}

@@ -1,0 +1,46 @@
+{
+  "$comment": "Windows client dependencies (libgdp, spectre, spectre-qt) -- see packaging/windows/README.md.",
+  "name": "ghost-client-windows",
+  "version-string": "0",
+  "dependencies": [
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": [
+        "avcodec",
+        "vulkan"
+      ]
+    },
+    {
+      "name": "glslang",
+      "host": true,
+      "features": [
+        "tools"
+      ]
+    },
+    {
+      "name": "ngtcp2",
+      "features": [
+        "openssl"
+      ]
+    },
+    "openssl",
+    "opus",
+    {
+      "name": "pkgconf",
+      "host": true
+    },
+    "protobuf",
+    "pyrowave",
+    "qtbase",
+    {
+      "name": "sdl3",
+      "features": [
+        "vulkan"
+      ]
+    },
+    "vulkan-headers",
+    "vulkan-loader",
+    "zstd"
+  ]
+}

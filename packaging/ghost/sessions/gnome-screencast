@@ -1,0 +1,27 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# Runs a headless full GNOME session as the real, top-level compositor
+# (docs/design/capture-backends.md) -- wraith captures its output
+# over PipeWire and injects input over libei (mutter's private
+# org.gnome.Mutter.ScreenCast/RemoteDesktop D-Bus API, no portal
+# involved; docs/adr/0002-gnome-through-mutters-private-api.md has why).
+
+export XDG_SESSION_TYPE=wayland
+
+# Ubuntu's flavoured session where it exists, upstream GNOME elsewhere
+# (Arch, Fedora): gnome-session fails outright on an unknown session.
+session=gnome
+desktop=GNOME
+IFS=:
+for dir in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do
+	if [ -e "$dir/gnome-session/sessions/ubuntu.session" ]; then
+		session=ubuntu
+		desktop=ubuntu:GNOME
+		break
+	fi
+done
+unset IFS
+export XDG_CURRENT_DESKTOP="$desktop"
+
+exec gnome-session --session="$session"

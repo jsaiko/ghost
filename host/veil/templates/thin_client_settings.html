@@ -1,0 +1,74 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+{% extends "base.html" %}
+{% block title %}Thin client settings{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/admin/thin-clients">Thin Clients</a> /</p>
+<h1>Settings</h1>
+<p class="muted">What every thin client's stream uses, as spectre-qt's Settings dialog sets it on a desktop, and the clients' own settings. A change reaches each client at once. Stream settings apply from its next sign-in, and running sessions keep what they started with; Power applies at once. Thin clients are always fullscreen kiosks, so spectre-qt's fullscreen and window-following options don't apply.</p>
+<form method="post" action="/admin/thin-clients/settings" class="grid">
+  <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+
+  <h2>Display</h2>
+  <label>Resolution
+    <select name="resolution">
+      <option value=""{% if p.resolution.is_empty() %} selected{% endif %}>Match the client's display</option>
+      {% for r in resolutions %}<option value="{{ r }}"{% if p.resolution.as_str() == r.as_str() %} selected{% endif %}>{{ r }}</option>{% endfor %}
+    </select></label>
+  <label>View
+    <select name="view">
+      <option value=""{% if p.view.is_empty() %} selected{% endif %}>As last set in the session menu</option>
+      <option value="fit"{% if p.view == "fit" %} selected{% endif %}>Fit to window</option>
+      <option value="actual"{% if p.view == "actual" %} selected{% endif %}>Actual size</option>
+    </select>
+    <span class="hint">Fit to window scales the remote desktop to the screen. Actual size shows it pixel for pixel, panned by pushing the pointer against an edge when it is bigger.</span></label>
+
+  <h2>Decoding</h2>
+  <label>Preferred decoder
+    <select name="preferred_decoder">
+      <option value="vulkan"{% if p.preferred_decoder == "vulkan" %} selected{% endif %}>Vulkan Video</option>
+      <option value="native"{% if p.preferred_decoder == "native" %} selected{% endif %}>VA-API</option>
+      <option value="software"{% if p.preferred_decoder == "software" %} selected{% endif %}>Software</option>
+    </select>
+    <span class="hint">Which decoder to try first. A hardware decoder that isn't available falls back to the other one, then to software. NVIDIA cards never use VA-API, since they have none.</span></label>
+
+  <h2>Codec</h2>
+  <label>Video codec
+    <select name="preferred_codec">
+      {% for (value, label) in codecs %}<option value="{{ value }}"{% if p.preferred_codec.as_str() == value.as_str() %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <span class="hint">Which codec to offer first. The host picks the first one it can encode: a preference, not a demand.</span></label>
+  <label class="check"><input type="checkbox" name="lossless_refinement" value="1"{% if p.lossless_refinement %} checked{% endif %}> Start sessions lossless</label>
+  <span class="hint">Once a region of the screen stops changing, the host re-sends it losslessly so text and UI become pixel-exact. Costs the host a frame readback per frame. Unticked, every session starts with it off; either way the session menu's Lossless Refinement row switches it.</span>
+  <label class="check"><input type="checkbox" name="allow_pyrowave" value="1"{% if p.allow_pyrowave %} checked{% endif %}> Use PyroWave on a wired LAN</label>
+  <span class="hint">The lowest latency there is, at several hundred Mbit/s: offered first only when the host is directly reachable over a wired link of 1 Gbit/s or more, and used only if the host has turned it on.</span>
+
+  <h2>Network</h2>
+  <label>Connection
+    <select name="network_profile">
+      <option value="auto"{% if p.network_profile == "auto" %} selected{% endif %}>Auto</option>
+      <option value="lan"{% if p.network_profile == "lan" %} selected{% endif %}>LAN</option>
+      <option value="internet"{% if p.network_profile == "internet" %} selected{% endif %}>Internet</option>
+      <option value="mobile"{% if p.network_profile == "mobile" %} selected{% endif %}>Mobile / lossy Wi-Fi</option>
+    </select>
+    <span class="hint">What kind of link the clients are on, so the host can pace the stream to it. Auto lets the host work it out from what it measures.</span></label>
+
+  <h2>Input</h2>
+  <label class="check"><input type="checkbox" name="forward_gamepads" value="1"{% if p.forward_gamepads %} checked{% endif %}> Forward gamepads</label>
+  <span class="hint">Mirror controllers plugged into a client onto the host as virtual gamepads (up to four), if the host supports it.</span>
+  <label class="check"><input type="checkbox" name="microphone" value="1"{% if p.microphone %} checked{% endif %}> Send microphone</label>
+  <span class="hint">Send a client's microphone to the host, where applications see it as a microphone, if the host supports it. Off by default.</span>
+
+  <h2>Diagnostics</h2>
+  <label class="check"><input type="checkbox" name="debug_logging" value="1"{% if p.debug_logging %} checked{% endif %}> Enable Spectre debug logging</label>
+  <span class="hint">Run spectre with its debug log on: more detail in the client's journal, and in the client's half of a support report (<code>wraith --report</code> on the host). For chasing a problem; off by default.</span>
+
+  <h2>Power</h2>
+  <label>Turn the display off after
+    <span class="inline-field"><input type="number" name="display_sleep_minutes" value="{{ p.display_sleep_minutes }}" min="0" max="1440" required> minutes</span>
+    <span class="hint">Without keyboard, mouse or gamepad input, at the sign-in screen or in a session. Any input wakes it. 0: never.</span></label>
+
+  <div><button type="submit">Save</button></div>
+</form>
+{% endblock %}

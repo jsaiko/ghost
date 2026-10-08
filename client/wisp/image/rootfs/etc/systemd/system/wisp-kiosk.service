@@ -1,0 +1,35 @@
+# The kiosk: wisp-greeter fullscreen under labwc on tty1, as the unprivileged
+# wisp user. PAMName + TTYPath give it a logind session on seat0, which is
+# what lets labwc open the GPU and input devices.
+[Unit]
+Description=Wisp kiosk (labwc + wisp-greeter)
+After=systemd-user-sessions.service systemd-logind.service network.target
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+User=wisp
+PAMName=wisp-kiosk
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+Environment=XDG_SESSION_TYPE=wayland
+Environment=QT_QPA_PLATFORM=wayland
+Environment=SDL_VIDEO_DRIVER=wayland
+# Start even with no keyboard or mouse plugged in yet.
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+# + runs it as root: forces every monitor but the first off, before labwc.
+ExecStartPre=+/usr/local/sbin/wisp-outputs
+# -S: labwc exits when the greeter does, and Restart brings both back.
+ExecStart=/usr/bin/labwc -C /etc/wisp/labwc -S /usr/local/bin/wisp-greeter
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target

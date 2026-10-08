@@ -1,0 +1,152 @@
+// SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+// SPDX-License-Identifier: GPL-3.0-only
+
+// ghostd <-> veild: the host channel, ALPN "gdp-host/1"
+// (docs/design/veil.md#the-host-channel, gdp-spec.md §13). One QUIC
+// connection per joined host, opened by ghostd to Veil's lobby port, with
+// mutual TLS: ghostd presents its host certificate and pins Veil's lobby
+// certificate; veild checks the host's certificate against the pin it
+// recorded at join. Never seen by spectre.
+//
+// Framed as GDP's streams (gdp-spec.md §3.1).
+syntax = "proto3";
+package ghost.broker;
+
+// The control stream: the first bidi stream, opened by ghostd. Join or
+// HostHello first; after HostWelcome, ghostd's events.
+message HostEnvelope {
+  oneof msg {
+    // Joining and connecting.
+    Join join = 1;
+    JoinAccepted join_accepted = 2;
+    HostHello hello = 3;
+    HostWelcome welcome = 4;
+    HostError error = 5;
+    // Leaving.
+    Leave leave = 6;
+    Left left = 7;
+    // What the host tells Veil once connected.
+    Snapshot snapshot = 8;
+    SessionStarted session_started = 9;
+    SessionEnded session_ended = 10;
+    ViewerAttached viewer_attached = 11;
+    ViewerDetached viewer_detached = 12;
+    LocalLoginTakeover local_login_takeover = 13;
+  }
+}
+
+// ghostd -> veild, `ghostd join` only: the first and only connection
+// before Veil has a pin for this host. Veil records the certificate the
+// host presented on this connection as the device's pin.
+message Join {
+  // The secret part of the admin UI's token, "<id>.<secret>" (the
+  // ":sha256:<hex>" suffix is for ghostd alone: it is Veil's pin).
+  string token = 1;
+  string hostname = 2;
+  // The address clients reach this host's sessions at directly, which
+  // Veil puts in Redirect.host. Editable in the admin UI later.
+  string client_address = 3;
+  string version = 4;
+}
+
+message JoinAccepted {
+  string device_id = 1;
+}
+
+// ghostd -> veild, first on every connection after the join.
+message HostHello {
+  string device_id = 1;
+  string version = 2;
+}
+
+// veild -> ghostd: the host is known, its certificate matches the pin,
+// and it is enabled. ghostd sends a Snapshot next.
+message HostWelcome {}
+
+// Grouped by tens as in gdp-spec.md §12: 1x identity, 2x state, 3x protocol.
+enum HostErrorCode {
+  HOST_ERROR_UNSPECIFIED = 0;
+  HOST_ERROR_BAD_TOKEN = 10;       // unknown, used or expired join token
+  HOST_ERROR_UNKNOWN_DEVICE = 11;  // removed in the admin UI, or never joined
+  HOST_ERROR_CERT_MISMATCH = 12;   // not the certificate this device joined with
+  HOST_ERROR_DISABLED = 20;        // disabled in the admin UI
+  HOST_ERROR_MALFORMED = 30;
+}
+
+// veild -> ghostd, then veild closes the connection with the same code.
+message HostError {
+  HostErrorCode code = 1;
+  string message = 2;
+}
+
+// Host -> Veil events. A session belongs to a username: Veil's accounts
+// and the host's share names, not uids.
+message SessionStarted {
+  uint32 uid = 1;
+  string username = 2;
+  string session_type = 3;
+  int64 started_at_unix = 4;
+}
+
+message SessionEnded {
+  uint32 uid = 1;
+  string username = 2;
+  string reason = 3;
+}
+
+message ViewerAttached {
+  uint32 uid = 1;
+  string username = 2;
+}
+
+message ViewerDetached {
+  uint32 uid = 1;
+  string username = 2;
+}
+
+// The user logged in at the host itself, which ended their ghost
+// session. A SessionEnded follows.
+message LocalLoginTakeover {
+  uint32 uid = 1;
+  string username = 2;
+}
+
+message RunningSession {
+  uint32 uid = 1;
+  string username = 2;
+  string session_type = 3;
+  int64 started_at_unix = 4;
+  bool viewer_attached = 5;
+}
+
+// ghostd -> veild after every HostWelcome: every session running now, so
+// Veil can rebuild what it knows about this host from scratch.
+message Snapshot {
+  repeated RunningSession sessions = 1;
+  // The desktops the host offers (sessions.d profiles that are available)
+  // and the one it defaults to, for Veil to put in DeviceList.
+  repeated HostSessionType available_types = 2;
+  string default_type = 3;
+}
+
+message HostSessionType {
+  string id = 1;
+  string name = 2;
+}
+
+// ghostd -> veild, `ghostd leave` only (after HostWelcome): forget this
+// device. veild answers Left and closes.
+message Leave {}
+message Left {}
+
+// The first frame of a login stream, a bidi stream veild opens for one
+// user's login. After it, the stream carries the ordinary lobby exchange
+// (gdp.lobby.LobbyEnvelope, gdp-spec.md §4) exactly as a direct client
+// would send it, with veild in the client's place.
+message LoginStreamOpen {
+  // The client's address as Veil saw it. ghostd penalises it, never
+  // Veil's, and passes it to PAM as PAM_RHOST. Believed only because it
+  // arrives on the mutually authenticated host channel.
+  string forwarded_for = 1;
+  string client_id = 2;
+}

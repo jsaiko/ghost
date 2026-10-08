@@ -1,0 +1,38 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# Runs labwc as the real, top-level compositor on its own headless
+# (virtual) backend, with LXQt's session manager as the startup app
+# (screencast-ext, docs/design/capture-backends.md -- the
+# ext_image_copy_capture_v1 / zwlr_virtual_pointer_v1 backend). LXQt has no
+# compositor of its own, but explicitly documents labwc as one of the
+# Wayland window managers it runs under
+# (/usr/share/lxqt/waylandwindowmanagers.conf). wraith captures labwc's
+# output and injects input the same way it does for kwin/GNOME, just over
+# the standard ext protocol instead of a private D-Bus API.
+#
+# WLR_HEADLESS_OUTPUTS=1 gives labwc a single virtual output at startup.
+# Unlike kwin's `--virtual WxH` or GNOME's RecordVirtual (sized from
+# wraith's own PipeWire request), the ext backend has no wraith-requested-
+# size plumbing yet (docs/design/capture-backends.md),
+# so this runs at whatever size labwc's headless backend defaults its
+# output to (1280x720) rather than
+# GHOST_OUTPUT_WIDTH/HEIGHT. Revisit once the ext FrameSource negotiates a
+# requested size the way PipeWireCapture does.
+#
+# `-S startlxqt`: labwc's own "session mode" runs startlxqt as the startup
+# app and terminates labwc when it exits -- the same compositor-follows-
+# session-client shape kwin/gnome-shell have with their own session, so a
+# clean LXQt logout (LogoutExec in lxqt.conf.in) needs no extra SIGTERM
+# from wraith's LOGOUT_GRACE fallback.
+export WLR_BACKENDS=headless
+export WLR_HEADLESS_OUTPUTS=1
+# NVIDIA's driver doesn't do implicit sync, and wlroots' GLES2 renderer
+# relies on it: it hands wraith a captured frame before the copy into it
+# has finished, so frames arrive with older content (a spinning vkcube
+# shakes). The Vulkan renderer attaches a fence to the buffer, which
+# wraith waits on.
+if [ -z "${WLR_RENDERER:-}" ] && [ -d /sys/module/nvidia_drm ]; then
+	export WLR_RENDERER=vulkan
+fi
+exec labwc -S startlxqt

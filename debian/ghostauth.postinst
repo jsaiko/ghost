@@ -1,0 +1,30 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+set -e
+
+# The accounts (usr/lib/sysusers.d/ghostauth.conf) come first: the key
+# below is the ghostauth group's to read.
+#DEBHELPER#
+
+# The key ghostauth mints its tickets with and ghostseat verifies them
+# (host/authticket). Generated once, root:ghostauth 0640, not part of the
+# package; delete it and reconfigure to rotate.
+case "$1" in
+configure)
+    f=/etc/ghost/auth-ticket.key
+    if [ ! -e "$f" ]; then
+        echo "ghostauth: generating the authentication ticket key"
+        install -d -m 0755 /etc/ghost
+        if ( umask 077 && openssl rand -hex 32 > "$f" ); then
+            chmod 0640 "$f"
+            chgrp ghostauth "$f"
+        else
+            rm -f "$f"
+            echo "ghostauth: ticket key generation failed" >&2
+        fi
+    fi
+    ;;
+esac
+
+exit 0

@@ -1,0 +1,34 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# Session leader for the labwc-hosted session types (terminal, steam;
+# docs/reference/session-profiles.md): labwc as the top-level compositor on a
+# headless output, captured by wraith over screencast-ext, running
+# the given command as its session client.
+#
+#   labwc-screencast <config-dir> <command> [args...]
+#
+# <config-dir> is that session type's directory under share/ghost/labwc,
+# holding its rc.xml. labwc -C reads only that directory, so the user's own
+# ~/.config/labwc (LXQt's, say) never changes how these sessions behave.
+#
+# -S ties labwc's lifetime to the command: when it exits labwc exits, and
+# wraith ends the session. labwc splits the command into words itself (no
+# shell), so it is passed as one string.
+#
+# The output starts at labwc's default size; wraith resizes it to the
+# client's over wlr-output-management before capturing.
+set -e
+config=$1
+shift
+export WLR_BACKENDS=headless
+export WLR_HEADLESS_OUTPUTS=1
+# NVIDIA's driver doesn't do implicit sync, and wlroots' GLES2 renderer
+# relies on it: it hands wraith a captured frame before the copy into it
+# has finished, so frames arrive with older content (a spinning vkcube
+# shakes). The Vulkan renderer attaches a fence to the buffer, which
+# wraith waits on.
+if [ -z "${WLR_RENDERER:-}" ] && [ -d /sys/module/nvidia_drm ]; then
+	export WLR_RENDERER=vulkan
+fi
+exec labwc -C "$config" -S "$*"

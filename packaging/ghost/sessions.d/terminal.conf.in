@@ -1,0 +1,6 @@
+[Session]
+Enabled=true
+Name=Terminal
+Backend=screencast-ext
+Exec=@GHOST_LIBEXECDIR@/sessions/labwc-screencast @GHOST_DATADIR@/labwc/terminal foot
+TryExec=foot labwc

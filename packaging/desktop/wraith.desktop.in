@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=wraith
+Comment=Ghost session encoder (not a user-facing application)
+Exec=@GHOST_BINDIR@/wraith
+NoDisplay=true
+Terminal=false
+X-KDE-Wayland-Interfaces=zkde_screencast_unstable_v1,kde_output_management_v2,kde_output_device_v2,kde_output_device_registry_v2

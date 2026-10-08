@@ -1,0 +1,11 @@
+[package]
+name = "preauth"
+version = "0.6.66"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[dependencies]
+anyhow = "1"
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"

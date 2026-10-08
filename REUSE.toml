@@ -1,0 +1,77 @@
+# Licensing for files that can't carry an SPDX header. Ghost is GPL-3.0-only
+# except libgdp and the GDP spec (MIT); vendored third-party files keep
+# their own terms. Check with `reuse lint`. The logos and icons under
+# assets/ were drawn by Joseph Saiko from AI-generated elements.
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Joseph Saiko <https://saiko.dev>"
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = ["libgdp/**", "docs/spec/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Joseph Saiko <https://saiko.dev>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "host/wraith/third_party/ffnvcodec/**"
+precedence = "override"
+SPDX-FileCopyrightText = ["2010-2023 NVIDIA Corporation", "2016 Timo Rothenpieler"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["host/wraith/third_party/wlr-protocol/LICENSE", "host/wraith/third_party/wlr-protocol/virtual-keyboard-unstable-v1.xml"]
+precedence = "override"
+SPDX-FileCopyrightText = ["2008-2011 Kristian Høgsberg", "2010-2013 Intel Corporation", "2012-2013 Collabora, Ltd.", "2018 Purism SPC", "2017-2018 Drew DeVault", "2014 Jari Vetoniemi", "2023 The wlroots contributors"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "host/wraith/third_party/wlr-protocol/wlr-output-management-unstable-v1.xml"
+precedence = "override"
+SPDX-FileCopyrightText = "2019 Purism SPC"
+SPDX-License-Identifier = "HPND-sell-variant"
+
+[[annotations]]
+path = "host/wraith/third_party/wlr-protocol/wlr-virtual-pointer-unstable-v1.xml"
+precedence = "override"
+SPDX-FileCopyrightText = "2019 Josef Gajdusek"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["host/wraith/third_party/kde-protocol/kde-output-device-v2.xml", "host/wraith/third_party/kde-protocol/kde-output-management-v2.xml"]
+precedence = "override"
+SPDX-FileCopyrightText = ["2008-2011 Kristian Høgsberg", "2010-2011 Intel Corporation", "2012-2013 Collabora, Ltd.", "2015 Sebastian Kügler <sebas@kde.org>", "2021 Méven Car <meven.car@enioka.com>", "2023 Xaver Hugl <xaver.hugl@kde.org>"]
+SPDX-License-Identifier = "MIT-CMU"
+
+[[annotations]]
+path = ["host/wraith/third_party/kde-protocol/zkde-screencast-unstable-v1.xml", "host/wraith/third_party/kde-protocol/LICENSE"]
+precedence = "override"
+SPDX-FileCopyrightText = "2020-2021 Aleix Pol Gonzalez <aleixpol@kde.org>"
+SPDX-License-Identifier = "LGPL-2.1-or-later"
+
+[[annotations]]
+path = "client/spectre/third_party/stb_truetype.h"
+precedence = "override"
+SPDX-FileCopyrightText = "2017 Sean Barrett"
+SPDX-License-Identifier = "MIT OR Unlicense"
+
+[[annotations]]
+path = ["client/spectre/resources/fonts/DejaVuSans-subset.ttf", "client/spectre/resources/fonts/LICENSE-DejaVu.txt"]
+precedence = "override"
+SPDX-FileCopyrightText = "2003 Bitstream, Inc."
+SPDX-License-Identifier = "Bitstream-Vera"
+
+[[annotations]]
+path = "host/veil/app/fzstd.js"
+precedence = "override"
+SPDX-FileCopyrightText = "2020 Arjun Barrett"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "host/veil/static/htmx.min.js"
+precedence = "override"
+SPDX-FileCopyrightText = "2020 Big Sky Software"
+SPDX-License-Identifier = "0BSD"

@@ -1,0 +1,166 @@
+// SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+// SPDX-License-Identifier: MIT
+
+// Lobby phase (spectre <-> ghostd, or spectre <-> Veil). See
+// gdp-spec.md §4.
+//
+// Rust in ghostd and veild, C++ in spectre-qt via libgdp's LobbyClient;
+// generated code on both sides is all either needs.
+syntax = "proto3";
+package gdp.lobby;
+
+// In the order a login goes: hello, authentication, the host (Veil only),
+// the session, then the redirect; an error can end it at any point.
+message LobbyEnvelope {
+  oneof msg {
+    LobbyHello hello = 1;
+    AuthChallenge auth_challenge = 2;
+    AuthResponse auth_response = 3;
+    DeviceList device_list = 4;
+    DeviceSelect device_select = 5;
+    SessionList session_list = 6;
+    SessionOpen session_open = 7;
+    Redirect redirect = 8;
+    LobbyError error = 9;
+  }
+}
+
+enum AuthMethod {
+  AUTH_METHOD_UNSPECIFIED = 0;
+  AUTH_METHOD_PASSWORD = 1;
+}
+
+message LobbyHello {
+  uint32 protocol_version = 1;  // GDP wire version; 1 for gdp-spec.md v1.0
+  string client_id = 2;         // opaque, spectre-chosen (e.g. hostname + install UUID)
+  AuthMethod auth_method = 3;
+  string username = 4;
+}
+
+message AuthChallenge {
+  // PAM conversation, one message per PAM prompt. Empty prompt + password
+  // method means "send the password from LobbyHello.auth_method's flow
+  // with no further prompt" (the common case for a single password auth).
+  string prompt = 1;
+  bool echo_input = 2;
+}
+
+message AuthResponse {
+  string response = 1;
+}
+
+// One host a Veil user may log in to (gdp-spec.md §5).
+message Device {
+  string id = 1;
+  string name = 2;
+  bool online = 3;          // the host's channel to Veil is up
+  bool has_session = 4;     // this user has a session running there
+  string session_type = 5;  // that session's type id, when has_session
+  // What the host offers, as its own SessionList would, so the client can
+  // choose a desktop in the same step as the host (nothing to ask later).
+  // Empty when the host is offline or hasn't said.
+  repeated SessionType available_types = 6;
+  string default_type = 7;  // an id from available_types, or empty
+}
+
+// Veil -> spectre, after authentication: the devices this user is
+// entitled to, those with a running session first. Only Veil sends it;
+// a host's own lobby goes straight to SessionList.
+message DeviceList {
+  repeated Device devices = 1;
+}
+
+// spectre -> Veil: log in to this device. The host's own exchange
+// (AuthChallenge for any further prompt, SessionList, ...) follows.
+message DeviceSelect {
+  string device_id = 1;
+}
+
+// The user's running session on this host (at most one: a host runs one
+// session per user, and any SessionOpen reattaches to it).
+message SessionInfo {
+  string session_id = 1;    // opaque
+  int64 started_at_unix = 2;
+  int64 last_active_unix = 3;
+  string session_type = 4;  // id of the sessions.d/*.conf profile it was started with
+  // Another client is viewing it now: a session connection without
+  // take_over would get ALREADY_CONNECTED (gdp-spec.md §6.4).
+  bool viewer_attached = 5;
+}
+
+// One selectable desktop, from a sessions.d/*.conf profile (id = filename
+// stem). ghostd only ever hands these ids back to the client -- never a
+// raw command string.
+message SessionType {
+  string id = 1;
+  string name = 2;
+}
+
+message SessionList {
+  repeated SessionInfo sessions = 1;
+  repeated SessionType available_types = 2;
+  string default_type = 3;  // id from available_types; empty only if the list itself is empty
+}
+
+// The client's choice from the SessionList: ghostd starts a session of
+// this type, or reattaches to the one already running whatever the type,
+// and answers with a Redirect. The session's size is asked for later, in
+// SessionHello.displays.
+message SessionOpen {
+  string session_type = 1;  // id from the preceding SessionList; empty = default_type
+}
+
+message Redirect {
+  // Empty = "reconnect to the same host you reached the lobby on" (the
+  // normal case; see gdp-spec.md §4.7). Set by Veil, whose
+  // sessions live on the hosts it brokers (or on Veil itself, for a
+  // gateway session).
+  string host = 1;
+  uint32 port = 2;
+  string token = 3;   // opaque; see gdp-spec.md §4.8 for its construction
+  int64 expiry_unix = 4;
+  // Lowercase hex SHA-256 of the DER certificate the session's wraith
+  // will present. spectre refuses a session connection whose certificate
+  // doesn't match (gdp-spec.md §2.3).
+  string cert_sha256 = 5;
+}
+
+// gdp-spec.md §12's one error-code table. The same numbers go on the
+// QUIC CONNECTION_CLOSE application error code (libgdp's error_codes.hpp
+// mirrors this enum for that path) -- keep the two in sync. Grouped by tens
+// so a receiver can classify a code it doesn't know by its tens digit.
+enum LobbyErrorCode {
+  LOBBY_ERROR_UNSPECIFIED = 0;
+
+  // 1x: the peer broke the protocol or asked for something unsupported.
+  // FRAME_TOO_LARGE and MALFORMED_FRAME are mostly close codes only: by the
+  // time they apply, no LobbyError can be sent.
+  LOBBY_ERROR_VERSION_MISMATCH = 10;
+  LOBBY_ERROR_MALFORMED_FRAME = 11;
+  LOBBY_ERROR_FRAME_TOO_LARGE = 12;
+  LOBBY_ERROR_NO_COMMON_CODEC = 13;      // close code only
+  LOBBY_ERROR_UNKNOWN_SESSION_TYPE = 14;
+  LOBBY_ERROR_UNSUPPORTED = 15;          // a stream kind or feature the peer doesn't implement or didn't negotiate
+
+  // 2x: who you are and what you may use.
+  LOBBY_ERROR_AUTH_FAILED = 20;
+  LOBBY_ERROR_HOST_AUTH_FAILED = 21;     // From Veil: Veil accepted the password but the host refused it.
+  LOBBY_ERROR_NOT_ENTITLED = 22;         // From Veil: the selected device isn't one of this user's.
+  LOBBY_ERROR_LOCAL_SESSION_ACTIVE = 23;
+  LOBBY_ERROR_ALREADY_CONNECTED = 24;
+
+  // 3x: the host can't take the session right now.
+  LOBBY_ERROR_HOST_OFFLINE = 30;         // From Veil: the selected device isn't connected to it.
+  LOBBY_ERROR_HOST_FULL = 31;
+  LOBBY_ERROR_SESSION_START_FAILED = 32;
+
+  // 4x: a session that ended on purpose. Close codes only.
+  LOBBY_ERROR_SESSION_ENDED = 40;
+  LOBBY_ERROR_ENDED_BY_LOCAL_LOGIN = 41; // sent by wraith to its viewer
+  LOBBY_ERROR_TAKEN_OVER = 42;           // sent by wraith to the viewer another client displaced (SessionHello.take_over)
+}
+
+message LobbyError {
+  LobbyErrorCode code = 1;
+  string message = 2;  // human-readable detail, not for programmatic use
+}

@@ -1,0 +1,33 @@
+// SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+// SPDX-License-Identifier: GPL-3.0-only
+
+// ghostlogin (the PAM account hook, root) -> ghostd (the ghost user), over
+// ghostd's own /run/ghost/ghostlogin.sock: this user is logging in at one
+// of the host's own seats, so end their ghost session first
+// (docs/design/login-and-sessions.md#one-graphical-login-per-user). One
+// request per connection; ghostd accepts only root, framed like GDP's
+// streams (gdp-spec.md §3.1).
+syntax = "proto3";
+package ghost.ghostlogin;
+
+message LocalLoginEnvelope {
+  oneof msg {
+    LocalLoginRequest request = 1;
+    LocalLoginReply reply = 2;
+  }
+}
+
+message LocalLoginRequest {
+  uint32 uid = 1;
+  string service = 2;  // $PAM_SERVICE, for ghostd's log line
+  string tty = 3;      // $PAM_TTY, likewise
+}
+
+// Sent once the ghost session is gone (or there was none), so the hook
+// can let the console login go on.
+message LocalLoginReply {
+  // True if a ghost session existed and was ended.
+  bool ended = 1;
+  // Set when ending it failed; the console login goes on regardless.
+  string error = 2;
+}

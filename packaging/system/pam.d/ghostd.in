@@ -1,0 +1,20 @@
+# PAM service for ghostd's lobby-phase authentication
+# (docs/design/login-and-sessions.md#authentication), opened by ghostauth
+# on ghostd's behalf: ghostd itself never runs PAM. Installed as
+# /etc/pam.d/ghostd by `cmake --install` (the top-level CMakeLists.txt's
+# GHOST_PAM_DIR) -- PAM only looks there, whatever the install prefix.
+#
+# ghostauth runs unprivileged with CAP_DAC_READ_SEARCH, so pam_unix
+# reads /etc/shadow itself whatever the distro's mode on it, and
+# pam_sss, pam_ldap and pam_krb5 need no more. A module that must write
+# as root (pam_faillock's tally) is inert here.
+#
+# Authentication only -- password check + account validity (expiry, locked
+# account, etc). This is deliberately *not* the PAM stack that opens the
+# logind session (pam_systemd); ghostseat opens that through its own
+# service, packaging/system/pam.d/ghostseat.in.
+#
+# A template: pam-render.sh fills in the distro's stack names (Debian's
+# common-*, system-auth on Arch/Fedora).
+auth     include    @PAM_AUTH@
+account  include    @PAM_ACCOUNT@

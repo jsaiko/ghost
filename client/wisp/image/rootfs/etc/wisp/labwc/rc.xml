@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+  labwc as Wisp's kiosk compositor (wisp-kiosk.service passes -C /etc/wisp/labwc).
+  The greeter and spectre -K both go fullscreen on their own; this file only
+  takes away labwc's own ways out. labwc loads its default keybinds and
+  mousebinds (Alt-Tab, the root menu, window moves) when none are defined,
+  so each section defines one that does nothing. Ctrl+Alt+F<n> VT switching
+  is handled by labwc outside the keybinds and still works.
+-->
+<labwc_config>
+  <core>
+    <decoration>client</decoration>
+    <gap>0</gap>
+  </core>
+  <keyboard>
+    <keybind key="XF86Launch9">
+      <action name="None"/>
+    </keybind>
+  </keyboard>
+  <mouse>
+    <context name="Root">
+      <mousebind button="Middle" action="Press">
+        <action name="None"/>
+      </mousebind>
+    </context>
+  </mouse>
+</labwc_config>

@@ -1,0 +1,7 @@
+[Session]
+Enabled=true
+Name=GNOME
+Backend=screencast-gnome
+Exec=@GHOST_LIBEXECDIR@/sessions/gnome-screencast
+TryExec=gnome-shell
+LogoutExec=gnome-session-quit --logout --no-prompt

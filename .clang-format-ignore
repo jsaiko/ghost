@@ -1,0 +1,4 @@
+# Vendored code, kept as upstream ships it.
+client/spectre/third_party/*
+host/wraith/third_party/*
+host/wraith/third_party/*/*

@@ -1,0 +1,7 @@
+// Embeds the .exe's Explorer/taskbar icon on Windows. Unlike the embedded
+// PNG (cmake/embed_binary.cmake), which only sets the *running* app's
+// window icon via SDL_SetWindowIcon(), this is what Explorer shows for the
+// file itself -- requires a real Win32 resource compiled in via
+// windres/rc, not just a packaged asset. Same pattern as spectre-qt's own
+// resources/app.rc.
+IDI_ICON1 ICON "../../../assets/app-icon.ico"

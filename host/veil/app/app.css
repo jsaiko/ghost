@@ -1,0 +1,94 @@
+/* SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> */
+/* SPDX-License-Identifier: GPL-3.0-only */
+
+:root {
+  --bg: #f6f7f9; --panel: #fff; --text: #1d2330; --muted: #6a7282; --line: #dfe3ea;
+  --accent: #4b5bd6; --accent-text: #fff; --bad: #c62f3a; --hover: #eef0f4;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161b; --panel: #1c1f26; --text: #e6e8ee; --muted: #9098a8; --line: #2c313b;
+    --accent: #7c89f0; --accent-text: #0e1016; --bad: #ef6b74; --hover: #262a33;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+#portal { flex: 1; display: grid; place-items: center; align-content: center; gap: 12px; padding: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 28px; width: min(400px, 100%); display: grid; gap: 14px; }
+.card .logo { justify-self: center; width: 200px; height: 200px; }
+.card h1 { margin: 0; font-size: 22px; }
+form { display: grid; gap: 14px; }
+label { display: grid; gap: 4px; }
+input { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+button { font: inherit; background: var(--accent); color: var(--accent-text); border: 0; border-radius: 6px; padding: 9px 16px; font-weight: 600; cursor: pointer; }
+button.secondary { background: transparent; color: var(--accent); padding: 4px 0; justify-self: start; font-weight: 500; }
+button:disabled { opacity: .5; cursor: default; }
+.muted { color: var(--muted); margin: 0; }
+.error { color: var(--bad); max-width: 400px; text-align: center; margin: 0; }
+dialog#notice { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 24px; width: min(420px, calc(100% - 32px)); }
+dialog#notice::backdrop { background: rgba(0, 0, 0, .5); }
+dialog#notice p { margin: 0; }
+dialog#notice button { justify-self: end; }
+#settings-view { width: min(560px, 100%); }
+#settings-view h2 { margin: 6px 0 0; font-size: 16px; }
+label.check { display: flex; gap: 8px; align-items: center; }
+.hint { color: var(--muted); font-size: 13px; margin: -8px 0 0 26px; }
+ul.choices { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+ul.choices button { width: 100%; text-align: left; background: var(--panel); color: var(--text); border: 1px solid var(--line); font-weight: 500; display: flex; justify-content: space-between; gap: 8px; }
+ul.choices button:hover:not(:disabled) { background: var(--hover); }
+ul.choices .note { color: var(--muted); font-weight: normal; font-size: 13px; }
+#devices-view { width: min(720px, 100%); }
+ul.tiles { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+ul.tiles button { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 10px 12px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; font-weight: 500; text-align: center; }
+ul.tiles button:hover:not(:disabled) { background: var(--hover); border-color: var(--accent); }
+ul.tiles button:disabled { opacity: .45; }
+ul.tiles img { width: 72px; height: 64px; object-fit: contain; }
+ul.tiles .tile-name { overflow-wrap: anywhere; }
+ul.tiles .note { color: var(--muted); font-weight: normal; font-size: 13px; }
+.spinner { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; justify-self: center; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#busy-view { text-align: center; }
+#busy-view p { margin: 0; }
+
+#session-view { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; overflow: hidden; }
+#toolbar { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: #1c1f26; color: #e6e8ee; font-size: 13px; flex-wrap: wrap; }
+#toolbar button { background: #2c313b; color: #e6e8ee; font-weight: 500; padding: 4px 10px; font-size: 13px; }
+#toolbar button:hover { background: #3a404c; }
+#toolbar .spacer { flex: 1; }
+#stage { flex: 1; display: grid; place-items: center; overflow: hidden; min-height: 0; }
+#stage > canvas { grid-area: 1 / 1; }
+#overlay { display: block; pointer-events: none; }
+#cursor { position: absolute; pointer-events: none; z-index: 1; image-rendering: pixelated; }
+#screen { display: block; outline: none; touch-action: none; image-rendering: auto; }
+#stats { position: absolute; top: 40px; left: 8px; margin: 0; padding: 8px 10px; background: rgba(0,0,0,.7); color: #fff; font: 12px/1.4 ui-monospace, monospace; border-radius: 6px; pointer-events: none; }
+#session-status { position: absolute; left: 0; right: 0; top: 45%; text-align: center; color: #ccc; margin: 0; pointer-events: none; }
+:fullscreen #toolbar { position: absolute; top: 0; left: 0; right: 0; z-index: 2; transform: translateY(-100%); transition: transform .12s ease-out; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+:fullscreen #toolbar.revealed { transform: none; }
+
+/* The top bar, as the admin UI's (static/style.css). */
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header { display: flex; align-items: center; gap: 24px; padding: 10px 24px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header .brand { font-weight: 700; font-size: 18px; color: var(--text); letter-spacing: .02em; }
+header nav { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+header nav a { padding: 6px 12px; border-radius: 6px; color: var(--muted); }
+header nav a.active, header nav a:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+.whoami { display: flex; align-items: center; gap: 12px; color: var(--muted); margin: 0; }
+/* The signed-in user's badge in the top bar, with its menu: opens on
+   hover, and on focus for keyboards and touch screens (a tap focuses the
+   badge). The menu's top padding bridges the gap, so moving down onto it
+   doesn't close it. */
+.user-menu { position: relative; }
+.user-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--hover); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-weight: 600; }
+.user-badge::after { content: ""; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; padding: 2.5px; transform: translateY(-2px) rotate(45deg); }
+.user-menu-items { display: none; position: absolute; right: 0; top: 100%; z-index: 10; padding-top: 6px; min-width: 100%; }
+.user-menu:hover .user-menu-items, .user-menu:focus-within .user-menu-items { display: block; }
+.user-menu-items > * { display: block; margin: 0; }
+.user-menu-items button { display: block; width: 100%; text-align: left; white-space: nowrap; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-weight: normal; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.user-menu-items button:hover, .user-menu-items button:focus-visible { background: var(--hover); }
+button.link { background: none; color: var(--accent); padding: 0; font-weight: normal; }

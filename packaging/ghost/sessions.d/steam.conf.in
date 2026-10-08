@@ -1,0 +1,7 @@
+[Session]
+Enabled=true
+Name=Steam (Big Picture)
+Backend=screencast-ext
+Exec=@GHOST_LIBEXECDIR@/sessions/labwc-screencast @GHOST_DATADIR@/labwc/steam steam -bigpicture
+TryExec=steam labwc
+LogoutExec=steam -shutdown

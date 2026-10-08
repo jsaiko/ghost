@@ -1,0 +1,37 @@
+/build/
+/build-*/
+/host/target/
+client/spectre-qt/build/
+client/spectre-qt/.qtcreator/
+*.o
+*.obj
+compile_commands.json
+.cache/
+*.ppm
+*.sock
+.claude/
+
+# Personal design notes and plans, not part of the repo.
+docs/scratch/
+
+# dpkg-buildpackage's working files (the .debs land in the parent directory)
+/debian/_build/
+/debian/tmp/
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/*.substvars
+/debian/*.debhelper.log
+/debian/veild.service
+/debian/veild.pam
+/debian/ghostd/
+/debian/ghostauth/
+/debian/veild/
+/debian/spectre/
+/debian/libgdp-dev/
+/debian/_pyrowave/
+/debian/libpyrowave-shared0/
+/debian/*.debhelper
+
+# `make deb` output
+/target/

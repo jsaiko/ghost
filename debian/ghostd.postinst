@@ -1,0 +1,56 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+set -e
+
+# The accounts (usr/lib/sysusers.d/ghostd.conf) and /run/ghost
+# (usr/lib/tmpfiles.d/ghost.conf) come first: the key below is the ghost
+# group's to read, and the units start last.
+#DEBHELPER#
+
+# The host's identity (gdp-spec.md §2.3): a self-signed certificate
+# ghostd's lobby presents and spectre pins on first use. Generated once and
+# never replaced -- a new one makes every client that trusted this host warn
+# that its certificate changed -- so it is not part of the package. The key
+# is readable by the ghost group only; ghostd, which runs as that user, is
+# its one reader.
+generate_host_cert() {
+    dir=/etc/ghost
+    crt=$dir/host-cert.pem
+    key=$dir/host-key.pem
+    if [ -e "$crt" ] || [ -e "$key" ]; then
+        [ -e "$key" ] && chgrp ghost "$key" && chmod 0640 "$key"
+        return 0
+    fi
+    host=$(hostname -f 2>/dev/null || hostname)
+    echo "ghostd: generating a self-signed host certificate for $host"
+    install -d -m 0755 "$dir"
+    if ( umask 077 && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+            -sha256 -nodes -days 36500 -subj "/CN=$host" \
+            -addext "subjectAltName=DNS:$host" -keyout "$key" -out "$crt" 2>/dev/null ); then
+        chmod 0640 "$key"
+        chgrp ghost "$key"
+        chmod 0644 "$crt"
+        openssl x509 -in "$crt" -noout -fingerprint -sha256
+    else
+        rm -f "$crt" "$key"
+        echo "ghostd: certificate generation failed; create $crt and $key by hand" >&2
+    fi
+}
+
+case "$1" in
+configure)
+    generate_host_cert
+    # The ghostlogin hook (/usr/share/pam-configs/ghostlogin): a console
+    # login ends the same user's ghost session.
+    if command -v pam-auth-update >/dev/null 2>&1; then
+        pam-auth-update --package
+    fi
+    # The gamepad seat rule is only read by udevd after a reload.
+    if [ -d /run/systemd/system ] && command -v udevadm >/dev/null 2>&1; then
+        udevadm control --reload || true
+    fi
+    ;;
+esac
+
+exit 0

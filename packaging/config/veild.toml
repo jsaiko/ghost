@@ -1,0 +1,142 @@
+# veild configuration (docs/design/veil.md).
+#
+# Every setting is shown commented out at its built-in default; uncomment
+# and edit to change one. veild reads this file, then
+# /etc/ghost/veild.d/*.toml in name order (each merged key by key over the
+# last), then its command-line flags, which win. Both must be owned by
+# root and not writable by group or others.
+#
+# Check a change with `veild -t`; print the settings veild would run with
+# with `veild -T`. Apply with `systemctl restart veild` -- gateway
+# sessions end on a restart, direct ones don't. SIGHUP
+# (`systemctl reload veild`) only reloads the web certificate.
+#
+# Durations are sshd-style strings ("90s", "10m", "1h") or plain seconds.
+
+[lobby]
+# The address to listen on. Empty: every address, IPv4 and IPv6. An IPv4
+# address serves IPv4 only, an IPv6 one IPv6 only.
+#address = ""
+# UDP port for spectre logins, joined hosts and gateway sessions. The
+# firewall must allow it.
+#port = 4442
+
+# Veil's lobby identity and its key (PEM). `make install-veil` generates
+# the pair once. spectre and every joined host pin it: replacing it means
+# re-joining every host, and every client warns that the certificate
+# changed. Back it up with the database.
+#cert = "/etc/ghost/veil-cert.pem"
+#key = "/etc/ghost/veil-key.pem"
+
+# Show clients (spectre-qt, Wisp's greeter, gateway sessions) the [web]
+# certificate below instead of the lobby pair: with one a CA issued for
+# public_address, clients trust Veil without asking, and its renewals
+# (SIGHUP) never look like a changed certificate. Joined hosts and Wisp
+# agents still get the lobby pair, which they pin. Needs [web] cert/key;
+# leave it off while those are the self-signed default.
+#clients_use_web_cert = false
+
+# The name clients and hosts reach this Veil by: shown in the `ghostd
+# join` command and sent to clients whose sessions go through the
+# gateway. Empty: this machine's fully qualified hostname.
+#public_address = ""
+
+# The joined hosts' channels.
+[hosts]
+# How long a join token from the admin UI stays valid.
+#join_token_ttl = "1h"
+# A host that has sent nothing for this long counts as offline. Hosts
+# ping every 10 s.
+#idle_timeout = "30s"
+# Logins in flight at once on one host. One Veil account may hold four
+# of them at once, across every host.
+#max_login_streams = 64
+
+# Wisp thin clients (docs/design/wisp.md), which report to
+# Veil on the lobby port and take their spectre settings from it.
+[thin_clients]
+# The key every Wisp client must present: the boot server passes it to
+# them on the kernel command line, so it only keeps out machines that
+# can't reach the boot network. `make install-veil` generates it once
+# (readable by the veil group); `veild wisp-env` prints it for the boot
+# server's .env. To rotate it, delete the file, rerun `make install-veil`,
+# restart veild and update the boot server; clients pick up the new key
+# at their next boot.
+#key = "/etc/ghost/veil-wisp.key"
+
+# The admin web UI, at https://<veil>/admin, and the browser client, at
+# https://<veil>/.
+[web]
+# HTTPS (TCP), and the browser client's WebTransport sessions on the same
+# port over UDP (never [lobby] port). Served only when cert and key are set.
+#listen = "[::]:443"
+# The HTTPS certificate chain and key (PEM), readable by the veil user.
+# Reloaded on SIGHUP. Never the lobby pair above. The default is the
+# self-signed pair `make install-veil` generates, so browsers warn until
+# these point at a certificate from Let's Encrypt or an internal CA.
+# Set both to "" to turn HTTPS (and the browser client) off.
+#cert = "/etc/ghost/veil-web-cert.pem"
+#key = "/etc/ghost/veil-web-key.pem"
+# Plain HTTP, for a reverse proxy in front of the web UI only, e.g.
+# "127.0.0.1:8080". Empty: off.
+#http_listen = ""
+# Members of this group may administer Veil. There is no built-in admin:
+# add a user with `usermod -aG ghost-admins <user>`.
+#admin_group = "ghost-admins"
+# A user stays signed in to Veil (the browser client, and the admin UI
+# for an administrator: one sign-in serves both) until this long without
+# a request, or this long after signing in.
+#portal_idle = "12h"
+#portal_max = "7d"
+# How long after signing in Veil keeps the password for the user's hosts,
+# so picking one asks for it no second time (and the host still unlocks
+# the wallet). It is kept sealed in memory, its key only in the browser's
+# cookie, and dropped if the browser's address changes. Never longer than
+# portal_max; 0 turns it off, and every host asks for the password.
+#remember_password = "12h"
+
+# Session traffic through Veil, for clients that can't reach a host
+# directly. Gateway sessions are not end-to-end encrypted: Veil sees them.
+[gateway]
+# A device in "auto" mode goes direct for clients inside these networks
+# (CIDRs) and through Veil for everyone else. The default is the private
+# ranges: RFC 1918 and the IPv6 unique local addresses. Add loopback
+# ("127.0.0.0/8", "::1/128") to send a client on this machine direct too,
+# or set [] to send everyone through Veil.
+#internal_networks = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
+# The mode a newly joined device starts with: "direct", "gateway" or
+# "auto".
+#default_mode = "auto"
+# The largest UDP payload Veil sends on a gateway session. Lower it for
+# clients behind tunnels.
+#max_udp_payload = 1452
+
+# Login policy and limits on connections that haven't authenticated yet,
+# as in ghostd.toml (sshd's options and defaults), for logins to Veil
+# itself: the lobby and the admin web UI.
+[auth]
+#permit_root_login = false
+#permit_empty_passwords = false
+#login_grace_time = "2m"
+
+[auth.max_startups]
+#start = 10
+#rate = 30
+#full = 100
+
+[auth.penalties]
+#enabled = true
+#authfail = "5s"
+#noauth = "1s"
+#grace_exceeded = "10s"
+#max = "10m"
+#min = "15s"
+
+[state]
+# Devices, entitlements, join tokens and the audit log (SQLite).
+#database = "/var/lib/veil/veil.db"
+
+[log]
+# tracing EnvFilter syntax ("info", "debug", "info,veild::hosts=debug").
+# A RUST_LOG environment variable overrides it.
+#level = "info"

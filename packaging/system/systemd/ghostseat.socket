@@ -1,0 +1,19 @@
+# ghostseat's socket (docs/design/login-and-sessions.md): ghostd connects
+# here to open a session, and systemd starts one ghostseat@.service
+# instance per connection, which becomes that session's root process.
+[Unit]
+Description=Ghost session opener socket
+# Only ghostd (its own group) may ask; every Open carries ghostauth's
+# ticket for the user.
+[Socket]
+ListenStream=/run/ghost/seat.sock
+Accept=yes
+SocketUser=root
+SocketGroup=ghost
+SocketMode=0660
+# An instance leaves this count once pam_systemd has moved it into its
+# session scope, so this bounds session starts in flight, not sessions.
+MaxConnections=256
+
+[Install]
+WantedBy=sockets.target

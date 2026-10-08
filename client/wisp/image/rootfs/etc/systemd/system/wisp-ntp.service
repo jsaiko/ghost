@@ -1,0 +1,15 @@
+# Runs inside sysinit.target, ahead of timesyncd (which is part of it) and
+# networkd: it only reads the kernel command line and writes under /run.
+# After=sysinit.target would be a cycle, and systemd breaks one by deleting
+# a job -- timesyncd's.
+[Unit]
+Description=Use the boot server's NTP servers (wisp_ntp=)
+DefaultDependencies=no
+Before=sysinit.target systemd-timesyncd.service systemd-networkd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wisp-ntp
+
+[Install]
+WantedBy=sysinit.target

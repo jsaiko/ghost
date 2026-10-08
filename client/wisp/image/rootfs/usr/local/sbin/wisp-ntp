@@ -1,0 +1,22 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# wisp_ntp=host,host on the kernel command line (the boot server's WISP_NTP):
+# use exactly these NTP servers. Otherwise nothing is configured here, and
+# systemd-timesyncd takes the servers DHCP offers, else Debian's pool.
+list=$(tr ' ' '\n' < /proc/cmdline | sed -n 's/^wisp_ntp=//p' | tail -n 1)
+[ -n "$list" ] || exit 0
+case "$list" in
+    *[!A-Za-z0-9.:_,\[\]-]*) echo "wisp-ntp: ignoring wisp_ntp, unexpected characters: $list" >&2; exit 0 ;;
+esac
+servers=$(echo "$list" | tr ',' ' ')
+
+mkdir -p /run/systemd/timesyncd.conf.d
+printf '[Time]\nNTP=%s\n' "$servers" > /run/systemd/timesyncd.conf.d/wisp.conf
+
+# timesyncd tries a link's DHCP servers before NTP=, so the admin's choice
+# only wins if DHCP's are switched off.
+mkdir -p /run/systemd/network/20-wired.network.d
+printf '[DHCPv4]\nUseNTP=no\n\n[DHCPv6]\nUseNTP=no\n\n[IPv6AcceptRA]\nUseNTP=no\n' \
+    > /run/systemd/network/20-wired.network.d/wisp-ntp.conf
+exit 0

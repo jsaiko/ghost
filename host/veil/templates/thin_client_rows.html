@@ -1,0 +1,14 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+{% for c in rows %}
+<tr>
+  <td><a href="/admin/thin-clients/{{ c.mac }}">{{ c.name }}</a>{% if c.name != c.hostname && !c.hostname.is_empty() %}<div class="muted small">{{ c.hostname }}</div>{% endif %}</td>
+  <td>{% if c.online %}<span class="badge on">online</span>{% else %}<span class="badge">offline</span>{% endif %}</td>
+  <td class="mono">{{ c.address }}</td>
+  <td class="mono">{{ c.mac }}</td>
+  <td>{% if c.user.is_empty() %}<span class="muted">none</span>{% else %}{{ c.user }}{% if !c.host_name.is_empty() %} <span class="muted small">on {{ c.host_name }}</span>{% endif %}{% endif %}</td>
+  <td class="muted">{{ c.uptime }}</td>
+  <td class="muted">{{ c.last_seen }}</td>
+</tr>
+{% endfor %}

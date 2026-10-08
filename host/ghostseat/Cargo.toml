@@ -1,0 +1,27 @@
+[package]
+name = "ghostseat"
+version = "0.6.66"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "ghostseat"
+path = "src/main.rs"
+
+[dependencies]
+rand = "0.9"
+authticket = { path = "../authticket" }
+ipc = { path = "../ipc" }
+tomlconf = { path = "../tomlconf" }
+serde = { version = "1", features = ["derive"] }
+anyhow = "1"
+libc = "0.2"
+# "socket" for the SCM_RIGHTS sendmsg and the socketpairs in devices.rs;
+# libc for the uinput ioctls there (libc has the structs but not the
+# UI_* request codes).
+nix = { version = "0.31", features = ["fs", "user", "socket", "uio"] }
+pam-client2 = { version = "0.5", default-features = false }
+tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "time", "signal", "sync", "process"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zeroize = "1"

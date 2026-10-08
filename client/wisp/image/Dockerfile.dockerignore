@@ -1,0 +1,16 @@
+# The image build's context is the repo root; send only what it compiles.
+*
+!CMakeLists.txt
+!assets
+!libgdp
+!client/spectre
+!client/spectre-settings
+!client/wisp/greeter
+!client/wisp/agent
+!client/wisp/image/rootfs
+!packaging
+!debian/copyright
+**/build
+**/build-*
+# After the build-* pattern above, which would drop it.
+!packaging/build-pyrowave.sh

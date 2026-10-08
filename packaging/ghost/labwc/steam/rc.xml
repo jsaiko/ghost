@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+  labwc config for the `steam` session type (packaging/ghost/sessions/
+  labwc-screencast): one app owning the whole output.
+
+  Every normal window is maximized without server-side decorations, which
+  on a headless output with no panels covers it exactly; a game that asks
+  for fullscreen still gets it. labwc has no "set fullscreen" action, only
+  a toggle, which would undo a window that maps already fullscreen.
+  Dialogs keep their own size.
+
+  No keybinds: labwc loads its defaults (Alt+Tab, Alt+F4, Super+Return
+  for a terminal, ...) whenever none are defined, so one binding that does
+  nothing is defined instead. Mouse bindings stay at labwc's defaults,
+  which include click-to-focus.
+-->
+<labwc_config>
+  <keyboard>
+    <keybind key="W-F24"><action name="None" /></keybind>
+  </keyboard>
+  <mouse><default /></mouse>
+  <windowRules>
+    <windowRule identifier="*" type="normal" serverDecoration="no">
+      <action name="Maximize" />
+    </windowRule>
+  </windowRules>
+</labwc_config>

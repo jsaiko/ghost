@@ -1,0 +1,20 @@
+# ghostauth's socket (docs/design/login-and-sessions.md#authentication):
+# ghostd and veild connect here for each login, and systemd starts one
+# ghostauth@.service instance per connection with the connection as its
+# stdin. Neither daemon ever runs PAM itself.
+[Unit]
+Description=Ghost PAM helper socket
+# Only ghostd (its own group) and veild (a member of it) may connect; it
+# would be a password oracle for any other local account.
+[Socket]
+ListenStream=/run/ghost/auth.sock
+Accept=yes
+SocketUser=root
+SocketGroup=ghost
+SocketMode=0660
+# Above the callers' MaxStartups (docs/design/preauth.md), which caps
+# the logins in flight before this.
+MaxConnections=256
+
+[Install]
+WantedBy=sockets.target

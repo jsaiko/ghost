@@ -1,0 +1,88 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+{% extends "base.html" %}
+{% block title %}{{ c.name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/admin/thin-clients">Thin Clients</a> /</p>
+<div class="title-row start">
+  <h1>{{ c.name }}</h1>
+  {% if c.online %}<span class="badge on">online</span>{% else %}<span class="badge">offline</span>{% endif %}
+</div>
+<dl class="facts">
+  <dt>MAC address</dt><dd class="mono">{{ c.mac }}</dd>
+  <dt>Hostname</dt><dd>{{ c.hostname }}</dd>
+  <dt>Addresses</dt><dd class="mono">{% for ip in report.ips %}{{ ip }}{% if !loop.last %}, {% endif %}{% else %}<span class="muted">none reported</span>{% endfor %}</dd>
+  <dt>Connects from</dt><dd class="mono">{{ c.address }}</dd>
+  <dt>Image</dt><dd>{% if report.image_version.is_empty() %}<span class="muted">unknown</span>{% else %}{{ report.image_version }}{% endif %} <span class="muted">{{ report.arch }}</span></dd>
+  <dt>Booted</dt><dd>{{ booted }}{% if c.online %} <span class="muted">(up {{ c.uptime }})</span>{% endif %}</dd>
+  <dt>First seen</dt><dd>{{ first_seen }}</dd>
+  <dt>Last seen</dt><dd>{{ c.last_seen }}</dd>
+</dl>
+
+<section>
+  <h2>Session</h2>
+  {% if !c.online %}<p class="muted">Offline.</p>
+  {% else if c.user.is_empty() %}<p class="muted">Nobody is signed in.</p>
+  {% else %}<p>{{ c.user }}{% if !c.host_name.is_empty() %} on {{ c.host_name }}{% endif %} <span class="muted">started {{ session_since }}</span></p>{% endif %}
+</section>
+
+{% if c.online %}
+<section>
+  <h2>Power</h2>
+  <div class="actions">
+    {% if !c.user.is_empty() %}
+    <form method="post" action="/admin/thin-clients/{{ c.mac }}/action" data-confirm="End {{ c.user }}'s session{% if !c.host_name.is_empty() %} on {{ c.host_name }}{% endif %}? Unsaved work there is lost.">
+      <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+      <input type="hidden" name="action" value="log_out">
+      <button type="submit" class="secondary">End Session</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/admin/thin-clients/{{ c.mac }}/action" data-confirm="Restart {{ c.name }}?{% if !c.user.is_empty() %} {{ c.user }} is disconnected; their desktop stays open on the host.{% endif %}">
+      <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+      <input type="hidden" name="action" value="reboot">
+      <button type="submit" class="secondary">Restart</button>
+    </form>
+    <form method="post" action="/admin/thin-clients/{{ c.mac }}/action" data-confirm="Shut down {{ c.name }}? It stays off until someone turns it on.{% if !c.user.is_empty() %} {{ c.user }} is disconnected; their desktop stays open on the host.{% endif %}">
+      <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+      <input type="hidden" name="action" value="power_off">
+      <button type="submit" class="secondary">Shut down</button>
+    </form>
+  </div>
+  <p class="hint">End Session ends the desktop session on the host, as the session menu's End Session does. Restart and shut down only disconnect it.</p>
+</section>
+{% endif %}
+
+<section>
+  <h2>Hardware</h2>
+  <dl class="facts">
+    <dt>CPU</dt><dd>{{ report.cpu_model }}{% if report.cpu_cores > 0 %} <span class="muted">· {{ report.cpu_cores }} threads</span>{% endif %}</dd>
+    <dt>Memory</dt><dd>{{ memory }}</dd>
+    <dt>GPU</dt><dd>{% for g in report.gpus %}<div>{{ g.name }} <span class="muted small">{{ g.driver }}</span></div>{% else %}<span class="muted">none found</span>{% endfor %}</dd>
+    <dt>Decoders</dt><dd class="mono small">{% for d in report.hw_decode %}{{ d }}{% if !loop.last %}, {% endif %}{% else %}<span class="muted">not reported</span>{% endfor %}</dd>
+    <dt>Displays</dt><dd>{% for d in displays %}<div>{{ d }}</div>{% else %}<span class="muted">none connected</span>{% endfor %}</dd>
+    <dt>Network</dt><dd>{% if report.nic_speed_mbps > 0 %}{{ report.nic_speed_mbps }} Mbit/s{% else %}<span class="muted">speed unknown</span>{% endif %}</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>Name</h2>
+  <form method="post" action="/admin/thin-clients/{{ c.mac }}" class="row">
+    <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+    <input name="name" value="{{ custom_name }}" placeholder="{{ c.hostname }}" maxlength="64">
+    <button type="submit">Save</button>
+  </form>
+  <p class="hint">Empty: the client's own hostname.</p>
+</section>
+
+{% if !c.online %}
+<section class="danger">
+  <h2>Remove</h2>
+  <p class="muted">Forgets this client and its name. It comes back, unnamed, the next time it boots.</p>
+  <form method="post" action="/admin/thin-clients/{{ c.mac }}/remove" data-confirm="Remove {{ c.name }}?">
+    <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+    <button type="submit" class="danger">Remove thin client</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

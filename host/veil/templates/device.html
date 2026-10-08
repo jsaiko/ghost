@@ -1,0 +1,79 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+{% extends "base.html" %}
+{% block title %}{{ d.name }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/admin/hosts">Hosts</a> /</p>
+<div class="title-row start">
+  <h1>{{ d.name }}</h1>
+  {% if !d.enabled %}<span class="badge off">disabled</span>{% else if d.online %}<span class="badge on">online</span>{% else %}<span class="badge">offline</span>{% endif %}
+</div>
+<dl class="facts">
+  <dt>Hostname</dt><dd>{{ d.hostname }}</dd>
+  <dt>Device id</dt><dd class="mono">{{ d.id }}</dd>
+  <dt>Certificate</dt><dd class="mono small">{{ d.cert_sha256 }}</dd>
+  <dt>Joined</dt><dd>{{ d.joined_at }}</dd>
+  <dt>Last seen</dt><dd>{{ d.last_seen }}</dd>
+</dl>
+
+<section>
+  <h2>Sessions</h2>
+  {% if d.sessions.is_empty() %}<p class="muted">No running sessions.</p>{% else %}
+  <table><thead><tr><th>User</th><th>Type</th><th>Started</th><th>Viewer</th><th>Gateway traffic</th></tr></thead><tbody>
+  {% for s in d.sessions %}<tr><td>{{ s.username }}</td><td>{{ s.session_type }}</td><td>{{ s.since }}</td><td>{% if s.viewer %}attached{% else %}<span class="muted">none</span>{% endif %}</td><td>{% if s.throughput.is_empty() %}<span class="muted">direct</span>{% else %}{{ s.throughput }}{% endif %}</td></tr>{% endfor %}
+  </tbody></table>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Settings</h2>
+  <form method="post" action="/admin/hosts/{{ d.id }}" class="grid">
+    <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+    <label>Name <input name="name" value="{{ d.name }}" required maxlength="64"></label>
+    <label>Client address <input name="client_address" value="{{ d.client_address }}" required maxlength="255">
+      <span class="hint">Where clients reach this host directly.</span></label>
+    <label>Mode
+      <select name="mode">
+        <option value="auto"{% if d.mode == "auto" %} selected{% endif %}>auto: direct inside the internal networks, gateway outside</option>
+        <option value="direct"{% if d.mode == "direct" %} selected{% endif %}>direct: clients connect to the host</option>
+        <option value="gateway"{% if d.mode == "gateway" %} selected{% endif %}>gateway: always through Veil</option>
+      </select></label>
+    <label class="check"><input type="checkbox" name="enabled" value="1"{% if d.enabled %} checked{% endif %}> Enabled</label>
+    <div><button type="submit">Save</button></div>
+  </form>
+</section>
+
+<section>
+  <h2>Entitlements</h2>
+  <p class="muted">Users and groups who may log in to this host through Veil.</p>
+  {% if grants.is_empty() %}<p class="muted">Nobody yet.</p>{% else %}
+  <ul class="grants">
+  {% for g in grants %}
+    <li><span class="badge">{{ g.kind }}</span> {{ g.name }}
+      <form method="post" action="/admin/hosts/{{ d.id }}/revoke" class="inline">
+        <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+        <input type="hidden" name="kind" value="{{ g.kind }}">
+        <input type="hidden" name="name" value="{{ g.name }}">
+        <button type="submit" class="link">remove</button>
+      </form></li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+  <form method="post" action="/admin/hosts/{{ d.id }}/grant" class="row">
+    <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+    <select name="kind"><option value="user">user</option><option value="group">group</option></select>
+    <input name="name" placeholder="name" required maxlength="256">
+    <button type="submit">Add</button>
+  </form>
+</section>
+
+<section class="danger">
+  <h2>Remove</h2>
+  <p class="muted">Forgets this host, its pin and its entitlements, and drops its connection. To bring it back it has to join again.</p>
+  <form method="post" action="/admin/hosts/{{ d.id }}/remove" data-confirm="Remove {{ d.name }}?">
+    <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+    <button type="submit" class="danger">Remove device</button>
+  </form>
+</section>
+{% endblock %}

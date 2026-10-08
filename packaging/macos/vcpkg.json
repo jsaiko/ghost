@@ -1,0 +1,40 @@
+{
+  "$comment": "macOS client dependencies (libgdp, spectre) -- see packaging/macos/README.md. Qt for spectre-qt comes from the official Qt build, not vcpkg.",
+  "name": "ghost-client-macos",
+  "version-string": "0",
+  "dependencies": [
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": [
+        "avcodec"
+      ]
+    },
+    {
+      "name": "glslang",
+      "host": true,
+      "features": [
+        "tools"
+      ]
+    },
+    {
+      "name": "ngtcp2",
+      "features": [
+        "openssl"
+      ]
+    },
+    "openssl",
+    "opus",
+    "protobuf",
+    {
+      "name": "sdl3",
+      "features": [
+        "macos-keyboard-grab",
+        "vulkan"
+      ]
+    },
+    "vulkan-headers",
+    "vulkan-loader",
+    "zstd"
+  ]
+}

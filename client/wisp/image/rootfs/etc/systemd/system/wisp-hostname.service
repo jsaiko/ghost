@@ -1,0 +1,12 @@
+[Unit]
+Description=Set hostname from the NIC's MAC address
+DefaultDependencies=no
+After=systemd-udevd.service sysinit.target
+Before=systemd-networkd.service network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wisp-hostname
+
+[Install]
+WantedBy=network.target

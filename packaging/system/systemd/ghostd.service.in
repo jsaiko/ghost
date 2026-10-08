@@ -1,0 +1,71 @@
+# ghostd system unit (docs/design/login-and-sessions.md). Template: the
+# top-level CMakeLists.txt expands @GHOST_BINDIR@ at configure time and
+# installs the result in $PREFIX/lib/systemd/system/ghostd.service.
+#
+# ghostd is the network-facing process and runs unprivileged, as the
+# `ghost` user. Everything that needs root happens elsewhere: PAM in a
+# ghostauth instance (ghostauth.socket), the logind session, wraith's
+# unit and the input devices in a ghostseat instance (ghostseat.socket).
+# A session is opened only with a ticket ghostauth minted, so a
+# compromised ghostd can't open one for a user who didn't just log in.
+[Unit]
+Description=Ghost host agent (lobby authentication and session startup)
+# logind must be up before the first session opens, and the lobby is
+# useless before the address it advertises is routable. Nothing can log
+# in without the two sockets.
+After=network-online.target systemd-logind.service ghostauth.socket ghostseat.socket
+Wants=network-online.target
+Requires=ghostauth.socket ghostseat.socket
+
+[Service]
+Type=simple
+User=ghost
+Group=ghost
+# Settings live in /etc/ghost/ghostd.toml (docs/reference/configuration.md), not
+# here -- the log level included ([log] level). No flags on ExecStart and no
+# RUST_LOG, since either would silently override the file.
+# As ssh.service does: a broken config fails the start with ghostd's own
+# error, which `systemctl status ghostd` shows. It can't save the lobby on
+# a restart -- systemd stops the old ghostd first -- so run `ghostd -t`
+# before restarting; running sessions survive either way.
+ExecStartPre=@GHOST_BINDIR@/ghostd -t
+ExecStart=@GHOST_BINDIR@/ghostd
+Restart=on-failure
+RestartSec=2
+# /run/ghost holds every ghost socket and must outlive a ghostd restart:
+# each open session's ghostseat has its sockets there. It is root's
+# (tmpfiles.d/ghost.conf, mode 1771 with group ghost), not a
+# RuntimeDirectory= of this unit: ghostd may create its own sockets in
+# it but not unlink ghostseat's. /var/lib/ghost keeps each user's last
+# session type across reboots.
+StateDirectory=ghost
+StateDirectoryMode=0700
+# Sandbox. ghostd needs its sockets (AF_UNIX: ghostauth, ghostseat,
+# logind through D-Bus), its QUIC socket (AF_INET/AF_INET6), the
+# certificate and key under /etc/ghost, and nothing else.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

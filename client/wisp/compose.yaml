@@ -1,0 +1,21 @@
+# Wisp boot server. Host networking on purpose: docker-proxy hides client
+# addresses and TFTP breaks behind NAT (docs/design/wisp.md).
+services:
+  wisp-boot:
+    build: .
+    image: wisp-boot
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      VEIL_HOST: ${VEIL_HOST:?set VEIL_HOST to the Veil address}
+      VEIL_CERT_SHA256: ${VEIL_CERT_SHA256:?set VEIL_CERT_SHA256 to the fingerprint of the Veil certificate}
+      WISP_KEY: ${WISP_KEY:?set WISP_KEY to the Wisp key (veild wisp-env prints it)}
+      WISP_SHELL: ${WISP_SHELL:-0}
+      WISP_SERIAL_CONSOLE: ${WISP_SERIAL_CONSOLE:-qemu}
+      WISP_NTP: ${WISP_NTP:-}
+      WISP_KERNEL_ARGS: ${WISP_KERNEL_ARGS:-}
+      HTTP_PORT: ${HTTP_PORT:-80}
+      TFTP_PORT: ${TFTP_PORT:-69}
+    # Boot content comes from here (make rootfs); no rebuild needed to update.
+    volumes:
+      - ./content:/srv/wisp:ro

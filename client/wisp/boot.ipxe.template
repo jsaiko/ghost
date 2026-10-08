@@ -1,0 +1,17 @@
+#!ipxe
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# Rendered by the container entrypoint; ${...} is iPXE's, @VEIL_HOST@ ours.
+# ${buildarch} is x86_64 / arm64 / riscv64 (and i386 for legacy BIOS, which
+# the entrypoint aliases to x86_64).
+set base ${cwduri}/${buildarch}
+# A kernel console on the serial port (WISP_SHELL=1, see entrypoint.sh): by
+# default only for QEMU guests, whose serial port is a free pty. On real
+# hardware a console on ttyS0 at 115200 baud can slow the boot to a crawl,
+# or stall it on a UART with nothing attached. (Not ${serial}: that is the
+# machine's serial number.)
+set wisp_console
+iseq ${manufacturer} QEMU && set wisp_console @QEMU_CONSOLE@ || echo -n
+kernel ${base}/vmlinuz initrd=initrd console=tty0 ${wisp_console} boot=live fetch=${base}/wisp.squashfs ip=dhcp veil=@VEIL_HOST@ veil_cert=@VEIL_CERT_SHA256@ wisp_key=@WISP_KEY@ @EXTRA@
+initrd --name initrd ${base}/initrd
+boot

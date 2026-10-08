@@ -1,0 +1,79 @@
+#!/usr/bin/make -f
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# One source package, six binaries (debian/control). Everything is built
+# and installed once by the CMake project into debian/tmp, and the
+# debian/<package>.install files then pick out each package's share.
+#
+include /usr/share/dpkg/architecture.mk
+
+# Build all packages:   dpkg-buildpackage -us -uc -b
+# Other architectures:  build natively on that architecture, or in an
+#                       arm64 etc. chroot/container (sbuild --arch=arm64).
+
+# Cargo (run by CMake for the host/ workspace) fetches its crates on a first
+# build, so this needs the network; an offline builder needs `cargo vendor`.
+# A builder with no writable $HOME (sbuild) sets CARGO_HOME itself.
+
+# The cmake buildsystem is named explicitly, and builds under debian/: left to
+# autodetect, dh picks the top-level Makefile, and its clean step runs the
+# repo's `make distclean`, which deletes a developer's build/ and host/target.
+%:
+	dh $@ --buildsystem=cmake --builddirectory=debian/_build
+
+# The prefix is baked into ghostd at compile time (host/ghostd/build.rs), so
+# it must be /usr here, not whatever dh would otherwise default to.
+# GHOST_PAM_CONFIGS_DIR is given explicitly: CMake's default probes the
+# build machine for /usr/share/pam-configs, which a chroot may lack.
+#
+# PyroWave (the optional "pyrowave" codec) has no distro package, so its
+# pinned commit is built first, into debian/_pyrowave, by the same script
+# `make` users run (packaging/build-pyrowave.sh -- it needs the network,
+# for git). wraith and spectre link against it, and its shared library
+# ships as libpyrowave-shared0, which dh_shlibdeps then makes ghostd and
+# spectre depend on.
+override_dh_auto_configure:
+	# The directory must exist and be ours, or the script falls back to sudo.
+	mkdir -p debian/_pyrowave
+	packaging/build-pyrowave.sh $(CURDIR)/debian/_pyrowave
+	PKG_CONFIG_PATH=$(CURDIR)/debian/_pyrowave/share/pkgconfig dh_auto_configure -- \
+		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DGHOST_INSTALL_LIBGDP_DEV=ON \
+		-DGHOST_ENABLE_PYROWAVE=ON \
+		-DGHOST_PAM_CONFIGS_DIR=/usr/share/pam-configs \
+		-DGHOST_PAM_STACK=debian
+
+override_dh_auto_test:
+	# The libgdp transport tests use the openssl CLI and /tmp, and several
+	# suites need a running compositor; run `make test` by hand.
+
+# veild is built by the same cargo workspace but, deliberately, not
+# installed by CMake (a host never gets it): its unit is expanded here,
+# and debian/veild.install takes the binary from the cargo output.
+override_dh_auto_install:
+	dh_auto_install
+	install -d debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)
+	cp -a debian/_pyrowave/lib/libpyrowave-shared.so.* debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/
+	sed 's|@GHOST_BINDIR@|/usr/bin|g' packaging/system/systemd/veild.service.in > debian/veild.service
+	packaging/system/pam-render.sh debian packaging/system/pam.d/veild.in debian/veild.pam
+
+override_dh_clean:
+	dh_clean
+	rm -rf debian/_pyrowave
+	rm -f debian/veild.service debian/veild.pam
+
+# wraith.service is a user unit ghostd starts itself; it has no [Install]
+# section and must not be enabled for every user.
+override_dh_installsystemduser:
+	dh_installsystemduser --no-enable
+
+# dh_installsysusers is not in compat 13's default sequence; it covers
+# debian/veild.sysusers and the sysusers.d files CMake installed into the
+# ghostd and ghostauth packages. veild's postinst starts the unit itself,
+# after it has generated the certificates the unit needs. ghostd's unit
+# requires the two socket units, which their packages enable and start.
+override_dh_installsystemd:
+	dh_installsysusers
+	dh_installsystemd -pveild --no-start
+	dh_installsystemd -pghostauth
+	dh_installsystemd -pghostd

@@ -1,0 +1,25 @@
+# A session's root process (host/ghostseat), started by ghostseat.socket
+# per Open from ghostd. Template: the top-level CMakeLists.txt expands
+# @GHOST_LIBEXECDIR@ at configure time.
+#
+# It opens the user's logind session (pam_open_session, which moves this
+# process into session-<id>.scope, as a display manager's session leader
+# is), starts wraith.service in the user's manager, creates the
+# session's input devices, and closes the session when the desktop ends.
+# Once pam_systemd has moved it, this unit's cgroup is empty and systemd
+# considers the instance finished; the process lives on in the session
+# scope, which is where logind wants it. No sandbox: it needs PAM, logind,
+# `systemctl --user --machine=`, /dev/uinput and /dev/uhid as root.
+[Unit]
+Description=Ghost session (%i)
+CollectMode=inactive-or-failed
+After=systemd-logind.service
+
+[Service]
+Type=simple
+ExecStart=@GHOST_LIBEXECDIR@/ghostseat
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
+# The instance outlives the unit on purpose (above): nothing to kill.
+KillMode=none

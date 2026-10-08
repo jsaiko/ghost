@@ -1,0 +1,4 @@
+usr/lib/ghost/ghostauth
+usr/lib/systemd/system/ghostauth.socket
+usr/lib/systemd/system/ghostauth@.service
+usr/lib/sysusers.d/ghostauth.conf

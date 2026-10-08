@@ -1,0 +1,21 @@
+# wisp-agent: reports this client to Veil and keeps the spectre profile Veil
+# sends in /run/wisp/profile.json (docs/design/wisp.md). Root, for
+# the hardware details and /run/wisp. Started with the network and ahead of
+# the kiosk, so the profile is usually there before anyone signs in; it
+# keeps running while the kiosk restarts.
+[Unit]
+Description=Wisp agent (reports to Veil)
+After=network.target systemd-resolved.service wisp-hostname.service
+Wants=network.target
+Before=wisp-kiosk.service
+
+[Service]
+ExecStart=/usr/local/bin/wisp-agent
+Restart=always
+RestartSec=5
+# No veil=, veil_cert= or wisp_key= on the kernel command line: nothing to
+# retry until the next boot.
+RestartPreventExitStatus=2
+
+[Install]
+WantedBy=multi-user.target

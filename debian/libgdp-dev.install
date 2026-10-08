@@ -1,0 +1,4 @@
+usr/include/gdp
+usr/lib/*/libgdp.a
+usr/lib/*/pkgconfig/gdp.pc
+usr/share/gdp

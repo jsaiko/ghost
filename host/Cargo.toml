@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["ipc", "gdpnet", "tomlconf", "pamconv", "preauth", "authticket", "ghostauth", "ghostd", "ghostseat", "ghostlogin", "veil"]
+
+# Release builds are what hosts run (the top-level CMakeLists.txt picks this
+# profile for every build type but Debug); keep symbols so backtraces and
+# gdb still make sense.
+[profile.release]
+debug = true

@@ -1,0 +1,43 @@
+// SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+// SPDX-License-Identifier: GPL-3.0-only
+
+// wraith's own control socket, $XDG_RUNTIME_DIR/wraith.sock: what a user
+// (or a tool running in their session) says to the wraith serving that
+// session -- `wraith --report` so far. Local IPC under the user's own
+// runtime directory (mode 0600), framed like GDP's streams (gdp-spec.md
+// §3.1). One connection carries one request and its one response; wraith
+// then closes. A command is a new arm of each oneof; a reader ignores arms
+// it doesn't know, so nothing about the wire changes when one is added.
+syntax = "proto3";
+package ghost.wraith;
+
+message WraithRequest {
+  oneof cmd {
+    ReportRequest report = 1;
+  }
+}
+
+message WraithResponse {
+  oneof result {
+    ReportResult report = 1;
+    WraithError error = 2;
+  }
+}
+
+// Collect what wraith and the attached client know for a support report.
+// The rest of the report (logs, settings, GPU) is the command's own to
+// gather, in the user's account.
+message ReportRequest {}
+
+message ReportResult {
+  // What wraith knows of the session: what each side offered, what was
+  // chosen. Plain text for a person to read.
+  bytes host_status = 1;
+  // The attached client's DiagnosticsReport (gdp-spec.md §7.11) as it
+  // sent it, or a sentence saying why there is none.
+  bytes client_text = 2;
+}
+
+message WraithError {
+  string message = 1;
+}

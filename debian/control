@@ -1,0 +1,111 @@
+Source: ghost
+Section: net
+Priority: optional
+Maintainer: Joseph Saiko <68829025+jsaiko@users.noreply.github.com>
+Rules-Requires-Root: no
+Standards-Version: 4.7.2
+Build-Depends:
+ debhelper-compat (= 13),
+ ca-certificates,
+ cargo,
+ cmake (>= 3.20),
+ git,
+ glslang-tools,
+ libavcodec-dev,
+ libavutil-dev,
+ libdrm-dev,
+ libegl-dev,
+ libgbm-dev,
+ libgles-dev,
+ libpam0g-dev,
+ libpipewire-0.3-dev,
+ libprotobuf-dev,
+ libsdl3-dev,
+ libssl-dev (>= 3.5),
+ libsystemd-dev,
+ libtomlplusplus-dev,
+ libva-dev,
+ libvulkan-dev,
+ libwayland-dev,
+ libx264-dev,
+ libxkbcommon-dev,
+ libzstd-dev,
+ libei-dev,
+ libngtcp2-dev,
+ libngtcp2-crypto-ossl-dev,
+ libopus-dev,
+ ninja-build,
+ pkgconf,
+ protobuf-compiler,
+ qt6-base-dev,
+ rustc,
+ wayland-protocols,
+Homepage: https://github.com/saiko/ghost
+
+Package: ghostd
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ghostauth (= ${binary:Version}), libpam-runtime, openssl, systemd
+Recommends: foot, labwc, mesa-va-drivers, pipewire, xwayland
+Description: Ghost host: remote desktop sessions over GDP
+ ghostd authenticates GDP clients against PAM (through ghostauth) and
+ starts a graphical session for each login, hosted by wraith: capture,
+ encode and the GDP transport. Sessions run on a real compositor (labwc,
+ KWin, GNOME Shell or others, per the session profiles in
+ /usr/share/ghost/sessions.d).
+ .
+ Install this on the machine whose desktop you want to reach. The Veil
+ broker (package veild) is separate and optional.
+
+Package: ghostauth
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libpam-runtime, openssl, systemd
+Description: Ghost PAM helper
+ ghostauth runs one PAM authentication per login for ghostd and veild,
+ in its own unprivileged process started by systemd per connection, so
+ neither network-facing daemon loads PAM or reads /etc/shadow. Pulled in
+ by ghostd and veild; of no use on its own.
+
+Package: veild
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ghostauth (= ${binary:Version}), libpam-runtime, openssl
+Description: Veil: the Ghost broker and web UI
+ Veil is the lobby clients sign in to before being connected to a Ghost
+ host. It serves a web UI and administers Wisp thin clients and the hosts
+ that join it.
+ .
+ A Veil machine does not need the host package, and a host does not need
+ this one.
+
+Package: spectre
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: mesa-va-drivers, mesa-vulkan-drivers
+Description: Ghost client: spectre and its Qt launcher
+ spectre is the GDP client: it connects to a Ghost host, decodes the video
+ (VA-API, Vulkan Video or software) and sends input back. spectre-qt is the
+ launcher that collects the connection settings and starts it.
+
+Package: libgdp-dev
+Section: libdevel
+Architecture: any
+Depends: ${misc:Depends},
+ libngtcp2-crypto-ossl-dev,
+ libngtcp2-dev,
+ libprotobuf-dev,
+ libssl-dev (>= 3.5),
+ libzstd-dev,
+Description: Ghost Display Protocol library (development files)
+ Headers, the static library, a pkg-config file and the .proto wire schema
+ for writing a GDP client or server. libgdp is linked statically into
+ ghostd, spectre and the others, so nothing here is needed at runtime.
+
+Package: libpyrowave-shared0
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: PyroWave wavelet video codec (shared library)
+ PyroWave's C API, built from the pinned upstream commit
+ (github.com/Themaister/pyrowave) that ghostd's and spectre's "pyrowave"
+ codec was written against. The bitstream is still a draft upstream, so
+ both ends of a session must run the same build. Needs a Vulkan device
+ with compute support.

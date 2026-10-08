@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SettingsDialog</class>
+ <widget class="QDialog" name="SettingsDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>360</width>
+    <height>260</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Settings</string>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QGroupBox" name="displayGroup">
+     <property name="title">
+      <string>Display</string>
+     </property>
+     <layout class="QFormLayout" name="displayLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="resolutionLabel">
+        <property name="text">
+         <string>Resolution:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="resolutionCombo"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="viewLabel">
+        <property name="text">
+         <string>View:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="viewCombo"/>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QCheckBox" name="followWindowCheck">
+        <property name="text">
+         <string>Resize the remote desktop with the window</string>
+        </property>
+        <property name="toolTip">
+         <string>When the window (or fullscreen) settles at a new size, ask the host for that
+resolution. Off, the picture scales to the window instead -- a 1080p desktop
+fullscreen on a 4K screen, say -- and the resolution changes only from the
+session menu.</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="QCheckBox" name="fullscreenCheck">
+        <property name="text">
+         <string>Start fullscreen</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="decodeGroup">
+     <property name="title">
+      <string>Decoding</string>
+     </property>
+     <layout class="QFormLayout" name="decodeLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="decoderLabel">
+        <property name="text">
+         <string>Preferred decoder:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="decoderCombo">
+        <property name="toolTip">
+         <string>Which decoder to try first. A hardware decoder that isn't available falls back to
+the other one, then to software. Software skips the GPU entirely -- more CPU, but
+useful when hardware decoding misbehaves. NVIDIA cards on Linux never use VA-API,
+since they have none.</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="codecGroup">
+     <property name="title">
+      <string>Codec</string>
+     </property>
+     <layout class="QFormLayout" name="codecLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="codecLabel">
+        <property name="text">
+         <string>Video codec:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="codecCombo">
+        <property name="toolTip">
+         <string>Which codec to offer first. The host picks the first one it can encode -- this is
+a preference, not a demand.</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <widget class="QCheckBox" name="pyrowaveCheck">
+        <property name="text">
+         <string>Use PyroWave on a wired LAN</string>
+        </property>
+        <property name="toolTip">
+         <string>PyroWave encodes and decodes a frame in well under a millisecond, for the lowest
+latency there is -- at several hundred Mbit/s. When ticked it is offered first,
+but only when the host is directly reachable over a wired link of 1 Gbit/s or
+more, never through Veil's gateway, and only used if the host has turned it on.</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QCheckBox" name="losslessCheck">
+        <property name="text">
+         <string>Start with Lossless Refinement on</string>
+        </property>
+        <property name="toolTip">
+         <string>Once a region of the screen stops changing, the host re-sends it losslessly so
+text and UI become pixel-exact, at the cost of a readback and a hash of every
+frame. Unticked, every session starts with it paused. Either way the session
+menu's Lossless Refinement row switches it mid-session.</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="networkGroup">
+     <property name="title">
+      <string>Network</string>
+     </property>
+     <layout class="QFormLayout" name="networkLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="networkLabel">
+        <property name="text">
+         <string>Connection:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="networkCombo">
+        <property name="toolTip">
+         <string>What kind of link this is, so the host can pace the stream to it. Auto lets
+the host work it out from what it measures, and keep re-deciding. LAN starts at
+full quality and ignores light packet loss; Internet starts lower and backs off
+sooner when latency climbs; Mobile tolerates heavy loss and jittery latency at
+the lowest bitrates.</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="inputGroup">
+     <property name="title">
+      <string>Input</string>
+     </property>
+     <layout class="QVBoxLayout" name="inputLayout">
+      <item>
+       <widget class="QCheckBox" name="gamepadCheck">
+        <property name="text">
+         <string>Forward gamepads</string>
+        </property>
+        <property name="toolTip">
+         <string>Mirror controllers plugged into this machine onto the host as virtual gamepads
+(up to four). Takes effect on the next connection; the host must support it.</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="microphoneCheck">
+        <property name="text">
+         <string>Send microphone</string>
+        </property>
+        <property name="toolTip">
+         <string>Send this machine's microphone to the host, where applications see it as a
+microphone. Off by default. Takes effect on the next connection; the host must support it.</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="debugGroup">
+     <property name="title">
+      <string>Debug</string>
+     </property>
+     <layout class="QVBoxLayout" name="debugLayout">
+      <item>
+       <widget class="QCheckBox" name="tileOutlineCheck">
+        <property name="text">
+         <string>Outline refined regions</string>
+        </property>
+        <property name="toolTip">
+         <string>Briefly draw a red box around every region the host refreshes losslessly.
+Only does anything while the session menu's Lossless Refinement row is on.</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="kioskCheck">
+        <property name="text">
+         <string>Kiosk mode</string>
+        </property>
+        <property name="toolTip">
+         <string>Launch spectre the way the Wisp thin client does (-K): fullscreen for good,
+no way out of it but the toolbar's close and End Session.</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>8</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>accepted()</signal>
+   <receiver>SettingsDialog</receiver>
+   <slot>accept()</slot>
+  </connection>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>rejected()</signal>
+   <receiver>SettingsDialog</receiver>
+   <slot>reject()</slot>
+  </connection>
+ </connections>
+</ui>

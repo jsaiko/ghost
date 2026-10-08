@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!--
+  labwc config for the `terminal` session type (packaging/ghost/sessions/
+  labwc-screencast): labwc's built-in key and mouse bindings, stated
+  explicitly so it is clear nothing else is meant.
+-->
+<labwc_config>
+  <keyboard><default /></keyboard>
+  <mouse><default /></mouse>
+</labwc_config>

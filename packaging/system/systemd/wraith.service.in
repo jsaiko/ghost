@@ -1,0 +1,34 @@
+# wraith user unit (docs/design/login-and-sessions.md). Template: the top-level
+# CMakeLists.txt expands @GHOST_BINDIR@ at configure time and installs
+# the result in $PREFIX/lib/systemd/user/wraith.service (/usr/local/lib/
+# systemd/user by default), one of the directories every user's `--user`
+# manager searches -- the session's ghostseat starts it there via
+# `systemctl --machine=`, never a bare fork (host/ghostseat/src/wraith.rs).
+#
+# No -c/-k: under -G, wraith generates a throwaway certificate for each
+# session and ghostd vouches for it to spectre (gdp-spec.md §2.3). The
+# host's own key is ghostd's alone: anything this unit can read, the user
+# it runs as can read too.
+#
+# No -s/-p: -G's SessionInit (host/proto/control.proto) carries the
+# session type ghostd validated for this login
+# (docs/reference/session-profiles.md). wraith exits with the session's
+# leader process (host/wraith/README.md, "Session types").
+[Unit]
+Description=Ghost session agent (capture, encode, GDP)
+
+[Service]
+Type=simple
+# %U = this unit's numeric uid -- must match ipc's control_socket(uid),
+# /run/ghost/<uid>.sock, which ghostseat binds before starting this.
+ExecStart=@GHOST_BINDIR@/wraith -G /run/ghost/%U.sock
+# Reports this uid's session as over however the unit stopped
+# (docs/design/login-and-sessions.md#teardown); systemd's verdict is in
+# $SERVICE_RESULT, $EXIT_CODE and $EXIT_STATUS. The `-`: a failed report
+# doesn't mark the unit failed, the session is over either way.
+ExecStopPost=-@GHOST_BINDIR@/wraith --session-ended /run/ghost/%U.sock
+# ghostseat closes the logind session when this stops, and the next
+# login opens a new one with a new wraith. A wraith systemd restarted on
+# its own would wait on the control socket for a SessionInit nobody
+# sends.
+Restart=no

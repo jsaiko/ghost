@@ -1,0 +1,125 @@
+# wraith configuration: the session host every ghost session runs
+# (docs/reference/configuration.md#wraithtoml).
+#
+# Every setting is shown commented out at its built-in default; uncomment
+# and edit to change one. Each wraith reads this file once when its
+# session starts, so a change applies to sessions started after it; a
+# running session keeps what it started with.
+#
+# Check a change with `wraith --check-config`, which prints the settings a
+# session would run with. A file wraith can't read is ignored whole -- the
+# session still starts, at the defaults, and says so in its log
+# (`journalctl --user -u wraith`) -- so check before relying on it.
+
+[log]
+# How much each session logs to the journal: "error", "info" or "debug".
+#level = "debug"
+
+[network]
+# QUIC's own congestion controller, underneath wraith's rate control:
+# "cubic" or "bbr". BBR carries about twice as much over lossy links
+# (docs/design/transport-and-rate-control.md).
+#congestion_control = "cubic"
+
+# Log every client statistics report with the rate controller's target,
+# not just its cuts.
+#rate_trace = false
+
+# Pacing: video goes out at no more than pacing_multiplier times the
+# rate controller's current target, and never slower than
+# pacing_floor_mbps. QUIC itself doesn't pace on a LAN, so without this a
+# keyframe leaves at the host's line rate and any slower hop on the way
+# (a 10G host feeding a 2.5G client port, a Wi-Fi access point) drops
+# what its buffer can't hold. A short burst still goes at once, so
+# ordinary frames aren't delayed. Once spectre has timed a few large
+# frames, a path slower than this (a home upload) is paced at the rate
+# measured instead. pacing_multiplier = 0 turns pacing off.
+#pacing_multiplier = 10
+#pacing_floor_mbps = 500
+
+[encode]
+# Frames between periodic keyframes: 600 is one every 10 s at 60 fps.
+# Every lost frame is already repaired by a keyframe spectre's loss report
+# asks for, so the periodic one only bounds damage that went unreported,
+# and on a slow link each is a burst many ordinary frames in size. 0 sends
+# no periodic keyframes at all (an infinite GOP): only the first and the
+# requested ones.
+#gop = 600
+
+# The most video bitrate a session may use, in Mbit/s. The rate
+# controller works below this, following what the link can carry; on a
+# LAN it starts at it. wraith -b (in bit/s) overrides it for one run.
+#max_bitrate_mbps = 80
+
+# Use the software (x264) encoder even where a hardware one (VA-API,
+# NVENC) works, like wraith -F. Normally it is used only when no hardware
+# encoder is.
+#force_software = false
+
+# NVENC only: encode straight from GPU memory. false copies every frame
+# through host memory instead -- for ruling the GPU import out when
+# diagnosing an NVENC problem.
+#nvenc_zero_copy = true
+
+# PyroWave only: its bitrate ceiling, in bits per pixel of the output at
+# 60 fps -- used instead of max_bitrate_mbps (and -b) for a pyrowave
+# session. 1.0 (~500 Mbit/s at 4K, ~125 at 1080p) is where dense text
+# stops showing halos; photos and games look fine from about 0.5.
+#pyrowave_bpp = 1.0
+
+# Which video codecs wraith offers a client; the client picks the first of
+# its own preferences that is on, and a GPU is chosen by the best codec
+# on here that it can encode. AV1 and PyroWave are off by default.
+# Turning every codec off leaves nothing to agree on, and every session is
+# refused.
+#
+# PyroWave (needs a wraith built with it, packaging/build-pyrowave.sh) is
+# an intra-only GPU codec for wired LANs: well under a millisecond to
+# encode, at several hundred Mbit/s. A client offers it only when it
+# reaches this host directly over a wired link of 1 Gbit/s or more, and
+# never through Veil's gateway. Every Vulkan GPU can run it, so it plays
+# no part in choosing the GPU.
+[encode.codecs]
+#pyrowave = false
+#av1 = false
+#h265 = true
+#h264 = true
+
+# Lossless refinement (the session menu's Lossless Refinement row): the screen
+# is cut into 16 px tiles, and a tile that stops changing is sent once,
+# bit-exact, over the video.
+[refine]
+# How long a tile must stay unchanged before it is sent losslessly. A
+# tile the compositor keeps repainting (a playing video, even where its
+# pixels hold still) counts as changing, so video stays on the video path.
+#settle_ms = 80
+
+# Bandwidth: lossless tiles may add up to bandwidth_percent of the video's
+# current target bitrate on top of it. The rate controller moves that
+# target with the link, so a congested or slow link gets proportionally
+# less lossless traffic, and a screen full of settling tiles fills in over
+# a few seconds instead of flooding it. burst_ms of that rate can go out
+# at once, so ordinary typing and small changes are never held back.
+# 0 turns the limit off (only a fixed 768 KiB per frame of raw tiles).
+#bandwidth_percent = 50
+#burst_ms = 500
+
+# Per network profile ("lan", "internet", "mobile": the one the client
+# asked for, or the one the host's own link measurements picked for
+# "auto", which can change mid-session -- the new values then apply from
+# the next frame). Any [refine] key set in one of these replaces
+# [refine]'s for that profile. The values shown below are built in and
+# apply even while commented out, so a key set in [refine] reaches only
+# the profiles that don't have their own: settle_ms there changes lan's,
+# but not internet's or mobile's.
+
+[refine.lan]
+# Nothing built in: lan runs [refine] as it is.
+
+[refine.internet]
+# Slower links wait longer before sending a tile losslessly, so text still
+# being typed or a view still scrolling is re-sent less often.
+#settle_ms = 150
+
+[refine.mobile]
+#settle_ms = 250

@@ -1,0 +1,31 @@
+# Virtual input devices ghost creates for its sessions (docs/design/audio-cursor-gamepad.md#gamepads; host/ghostseat/src/devices.rs).
+#
+# A ghost session has no seat, and by default a virtual controller gets
+# the opposite of what it needs: udev's input_id tags it
+# ID_INPUT_JOYSTICK, 70-uaccess.rules turns that into a `uaccess` tag
+# (and Steam's 60-steam-input.rules tags Sony and Valve hidraw nodes
+# too), a virtual device has no seated parent so 73-seat-late.rules
+# leaves it on seat0, and logind then ACLs the nodes to whoever is
+# sitting at the console -- who also sees a phantom controller appear --
+# while the session user they were created for can't open them at all.
+#
+# These rules take ghost's devices off seat0 and out of uaccess, and
+# drop `power-switch` so logind never acts on one. They decide nothing
+# about who owns them: ghostseat chowns each node to its session's uid
+# after udev has processed it (which is why MODE is set here -- udev
+# applies it on the add event, and a chown that raced ahead of it would
+# be reset). Keyed on the phys ghostseat sets, which only it can since only
+# root can open /dev/uinput and /dev/uhid:
+#
+# - a uinput pad carries it on its input device (ATTRS{phys});
+# - a uhid controller carries it on its HID device as HID_PHYS, which
+#   its driver's input devices don't copy (their phys is empty), so the
+#   second line matches the HID parent's uevent instead, for its input
+#   and hidraw nodes alike.
+#
+# Numbered 72: after 70-uaccess (so TAG-= sticks), before 73-seat-late (so
+# ID_SEAT is respected). ghostseat checks that this file is installed,
+# and for raw controllers that it has the second line, and reports
+# gamepad forwarding unavailable if not -- see its log at session start.
+SUBSYSTEM=="input", ATTRS{phys}=="ghost/*", ENV{ID_SEAT}="ghost", TAG-="uaccess", TAG-="seat", TAG-="power-switch", MODE="0600"
+SUBSYSTEM=="input|hidraw", ATTRS{uevent}=="*HID_PHYS=ghost/*", ENV{ID_SEAT}="ghost", TAG-="uaccess", TAG-="seat", TAG-="power-switch", MODE="0600"

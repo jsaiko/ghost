@@ -1,0 +1,21 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+{% extends "base.html" %}
+{% block title %}Thin Clients{% endblock %}
+{% block content %}
+<div class="title-row">
+  <h1>Thin Clients</h1>
+  <a class="button" href="/admin/thin-clients/settings">Settings</a>
+</div>
+<p class="muted">{{ online }} of {{ total }} online</p>
+<table class="devices">
+  <thead><tr><th>Name</th><th>Status</th><th>IP</th><th>MAC</th><th>User</th><th>Uptime</th><th>Last seen</th></tr></thead>
+  <tbody>
+  {% include "thin_client_rows.html" %}
+  </tbody>
+</table>
+{% if total == 0 %}
+<p class="empty">No thin clients yet. Wisp clients appear here once they boot with the boot server's <code>WISP_KEY</code> (<code>veild wisp-env</code> prints it).</p>
+{% endif %}
+{% endblock %}

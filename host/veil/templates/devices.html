@@ -1,0 +1,21 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+{% extends "base.html" %}
+{% block title %}Hosts{% endblock %}
+{% block content %}
+<div class="title-row">
+  <h1>Hosts</h1>
+  <a class="button" href="/admin/hosts/new">Add host</a>
+</div>
+<p class="muted">{{ online }} of {{ total }} online · gateway traffic {{ gateway_total }}</p>
+<table class="devices">
+  <thead><tr><th>Name</th><th>Status</th><th>Client address</th><th>Mode</th><th>Sessions</th><th>Last seen</th></tr></thead>
+  <tbody>
+  {% include "device_rows.html" %}
+  </tbody>
+</table>
+{% if total == 0 %}
+<p class="empty">No hosts have joined yet. <a href="/admin/hosts/new">Add one.</a></p>
+{% endif %}
+{% endblock %}

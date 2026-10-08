@@ -1,0 +1,10 @@
+#!ipxe
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# First stage: take the DHCP lease, then fetch chain.ipxe over TFTP from the
+# machine that served this binary (DHCP next-server). That small script is
+# rendered at container start and points at the HTTP server, so the HTTP port
+# is not baked into this binary.
+:retry
+dhcp || goto retry
+chain tftp://${next-server}/chain.ipxe || goto retry

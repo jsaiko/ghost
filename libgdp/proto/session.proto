@@ -1,0 +1,538 @@
+// SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+// SPDX-License-Identifier: MIT
+
+// Session phase control and input streams (spectre <-> wraith), both ends
+// via libgdp. Video/audio are raw datagrams, not protobuf — see
+// gdp-spec.md §9/§10.
+syntax = "proto3";
+package gdp.session;
+
+// --- Control stream (gdp-spec.md §6, §7) ---
+
+// Grouped by purpose; 1-15 are the one-byte tags, kept for what is sent
+// often or matters most, with the rarest message (a logout, once) at 16.
+message ControlEnvelope {
+  oneof msg {
+    // Opening the session.
+    SessionHello hello = 1;
+    SessionAccept accept = 2;
+    SessionReject reject = 3;
+    // Liveness and measurement.
+    StatsReport stats = 4;
+    Ping ping = 5;
+    Pong pong = 6;
+    GatewayPath gateway_path = 7;
+    // The picture: outputs and the pointer.
+    DisplaysChanged displays_changed = 8;
+    ResolutionChange resolution_change = 9;
+    CursorShape cursor_shape = 10;
+    CursorPosition cursor_position = 11;
+    // Steering the stream.
+    KeyframeRequest keyframe_request = 12;
+    NetworkProfileChanged network_profile_changed = 13;
+    RefinePause refine_pause = 14;
+    // Data and ending.
+    ClipboardData clipboard = 15;
+    LogoutRequest logout_request = 16;
+    // Support: the host asks the client what it knows (wraith --report).
+    DiagnosticsRequest diagnostics_request = 17;
+    DiagnosticsReport diagnostics_report = 18;
+  }
+}
+
+message DisplayDescriptor {
+  uint32 width = 1;
+  uint32 height = 2;
+  uint32 refresh_mhz = 3;  // refresh rate * 1000, matches Wayland's mode reporting
+  double scale = 4;
+}
+
+// Grouped by purpose (gdp-spec.md §6.2): who is connecting and how, then
+// the picture, then extensions, then what is only informational.
+message SessionHello {
+  // Who and how.
+  string token = 1;                    // from lobby Redirect.token
+  // The user's session is already open on another client: ask the host to
+  // disconnect that viewer (it gets TAKEN_OVER) and attach this one, instead
+  // of refusing with ALREADY_CONNECTED. Only ever honoured for a connection
+  // whose token checked out, which is the same user (gdp-spec.md §6.4
+  // "Taking a session over").
+  bool take_over = 2;
+  // Set by a gateway (Veil) as it relays the session, overwriting what the
+  // client sent; a client always leaves it false. How wraith knows the
+  // session is relayed (gdp-spec.md §6.10).
+  bool via_gateway = 3;
+  // What kind of link this is, for wraith's rate controller (gdp-spec.md
+  // §6.9). AUTO -- also what a spectre that leaves it
+  // out sends -- lets wraith pick from what it measures.
+  NetworkProfile network_profile = 4;
+
+  // The picture.
+  repeated DisplayDescriptor displays = 5;
+  // Video codecs spectre can decode, in preference order (gdp-spec.md §6.6
+  // "Codec negotiation"): wraith picks the first it can encode and echoes
+  // it in SessionAccept.codec, or closes with NO_COMMON_CODEC (§12).
+  repeated string codecs = 6;          // e.g. "h264"
+  // What the client can decode and show beyond the baseline every client
+  // takes: 8-bit 4:2:0 in every codec it offers, BT.709 primaries, sRGB
+  // transfer (gdp-spec.md §7.3 "Colour negotiation"). The host picks its
+  // OutputDescriptor.color from the baseline plus these. Empty: baseline
+  // only.
+  repeated CodecFormat codec_formats = 7;
+  repeated ColorPrimaries primaries = 8;
+  repeated ColorTransfer transfers = 9;
+
+  // Extensions.
+  // Optional protocol extensions spectre understands (gdp-spec.md §6.7
+  // "Capabilities"). wraith replies with the subset it also supports;
+  // only those are in effect for the session. Unknown names are ignored.
+  repeated string capabilities = 10;
+  // Refinement tile formats the client accepts (gdp-spec.md §9.5), beyond
+  // REFINE_FORMAT_BGR8, which every client that offers "refine" accepts.
+  repeated RefineFormat refine_formats = 11;
+
+  // Informational.
+  repeated string decoders = 12;       // e.g. "vulkan", "vaapi", "software", "d3d11va"
+}
+
+// More a client can decode in one of its `codecs` (gdp-spec.md §7.3).
+message CodecFormat {
+  string codec = 1;                // a token from SessionHello.codecs
+  repeated uint32 bit_depths = 2;  // per component, beyond 8; e.g. 10
+  repeated Chroma chroma = 3;      // subsamplings beyond 4:2:0
+}
+
+enum Chroma {
+  CHROMA_UNSPECIFIED = 0;
+  CHROMA_420 = 1;
+  CHROMA_422 = 2;
+  CHROMA_444 = 3;
+}
+
+// The pixel format of refinement tiles (gdp-spec.md §9.5).
+enum RefineFormat {
+  REFINE_FORMAT_BGR8 = 0;  // 3 bytes: B, G, R, 8 bits each
+}
+
+enum NetworkProfile {
+  NETWORK_PROFILE_AUTO = 0;
+  NETWORK_PROFILE_LAN = 1;
+  NETWORK_PROFILE_INTERNET = 2;
+  NETWORK_PROFILE_MOBILE = 3;
+}
+
+message OutputDescriptor {
+  uint32 stream_id = 1;                // matches video datagram stream_id, §9
+  DisplayDescriptor display = 2;
+  // How to read the decoded pictures. Unset, or any field UNSPECIFIED,
+  // means the codec's conventional defaults (gdp-spec.md §7.3).
+  ColorDescription color = 3;
+}
+
+// What the pixels of a stream mean, so a client doesn't have to guess how
+// the host converted them. wraith fills every field of what it really does.
+// Depth, chroma, primaries and transfer stay within what SessionHello
+// declared (gdp-spec.md §7.3).
+message ColorDescription {
+  ColorMatrix matrix = 1;      // RGB <-> YCbCr coefficients
+  ColorRange range = 2;
+  ColorPrimaries primaries = 3;
+  ColorTransfer transfer = 4;
+  uint32 bit_depth = 5;        // per component; 0 = 8
+  Chroma chroma = 6;           // UNSPECIFIED = 4:2:0
+}
+
+enum ColorMatrix {
+  COLOR_MATRIX_UNSPECIFIED = 0;
+  COLOR_MATRIX_BT601 = 1;
+  COLOR_MATRIX_BT709 = 2;
+  COLOR_MATRIX_BT2020_NCL = 3;
+}
+
+enum ColorRange {
+  COLOR_RANGE_UNSPECIFIED = 0;
+  COLOR_RANGE_LIMITED = 1;     // 16-235 luma, 16-240 chroma at 8 bits
+  COLOR_RANGE_FULL = 2;
+}
+
+enum ColorPrimaries {
+  COLOR_PRIMARIES_UNSPECIFIED = 0;
+  COLOR_PRIMARIES_BT709 = 1;   // also sRGB's
+  COLOR_PRIMARIES_BT2020 = 2;
+}
+
+enum ColorTransfer {
+  COLOR_TRANSFER_UNSPECIFIED = 0;
+  COLOR_TRANSFER_SRGB = 1;
+  COLOR_TRANSFER_PQ = 2;       // SMPTE ST 2084
+  COLOR_TRANSFER_HLG = 3;
+}
+
+// The first frame (§3.1 framing) on every reliable stream other than
+// control (0) and input (4), opened by either peer. It names what the
+// stream carries, so a peer that doesn't know the kind can refuse it
+// (reset with UNSUPPORTED) instead of misreading it. A kind is only used on
+// a session that negotiated the capability of the same name. Everything
+// after this frame is that kind's own protocol. No kind is defined yet.
+message StreamOpen {
+  string kind = 1;     // lowercase token, like capabilities: e.g. "usb"
+  bytes params = 2;    // the kind's own opening parameters, if any
+}
+
+message AudioConfig {
+  uint32 sample_rate_hz = 1;  // 48000 today
+  uint32 channels = 2;        // 2 today
+  uint32 frame_ms = 3;        // 10 today -- fixes payload size at sample_rate_hz/1000*frame_ms*channels samples
+  string codec = 4;           // "opus" today -- what §10's datagram payloads are (gdp-spec.md §10)
+}
+
+// Grouped like SessionHello (gdp-spec.md §6.5).
+message SessionAccept {
+  // The picture.
+  repeated OutputDescriptor outputs = 1;
+  string codec = 2;                    // one of SessionHello.codecs
+  uint32 bitrate_ceiling_bps = 3;
+
+  // Sound.
+  AudioConfig audio = 4;
+  // The format of the client -> host microphone channel (gdp-spec.md
+  // §10.1). Present exactly when "microphone" is in capabilities.
+  AudioConfig microphone = 5;
+
+  // Extensions.
+  repeated string capabilities = 6;    // subset of SessionHello.capabilities now in effect
+
+  // The link.
+  // The profile wraith's rate control is running with (gdp-spec.md §6.9
+  // "Network profile"): the one SessionHello asked for, or -- for AUTO --
+  // the one wraith classified the link as. Informational. AUTO (0) here
+  // means a wraith that doesn't report it.
+  NetworkProfile network_profile = 7;
+  // SessionHello.via_gateway echoed: whether a gateway relays this
+  // session, so every client knows from the first reply.
+  bool via_gateway = 8;
+
+  // Informational, for the client's own UI (gdp-spec.md §6.5):
+  // which encoder backend is producing the stream ("vaapi" or "software";
+  // empty from a wraith that doesn't report it), and whose session this
+  // is on which host, e.g. "alice" @ "alice-pc".
+  string encoder = 9;
+  string host_user = 10;
+  string host_name = 11;
+}
+
+message SessionReject {
+  string reason = 1;
+}
+
+message DisplaysChanged {
+  repeated OutputDescriptor outputs = 1;  // full replacement, not a delta
+}
+
+message ResolutionChange {
+  uint32 stream_id = 1;
+  DisplayDescriptor display = 2;
+}
+
+message KeyframeRequest {
+  uint32 stream_id = 1;
+}
+
+// Either direction, only when the session negotiated the "clipboard"
+// capability (gdp-spec.md §7.9); a peer drops one it never
+// negotiated. v1 is text only: mime_type is literally "text/plain" and
+// data is UTF-8, capped at 4 MiB (libgdp's clipboard.hpp). Any other
+// mime_type is dropped rather than forwarded, which leaves room for
+// images and other formats later with no wire change. Empty data is
+// never sent -- there is no "clear the clipboard" operation.
+message ClipboardData {
+  string mime_type = 1;
+  bytes data = 2;
+}
+
+message CursorShape {
+  uint32 width = 1;
+  uint32 height = 2;
+  uint32 hotspot_x = 3;
+  uint32 hotspot_y = 4;
+  bytes argb8888 = 5;  // width * height * 4 bytes, premultiplied
+}
+
+// wraith -> spectre: where the server-side pointer is, 0..1 normalized over
+// the output like PointerMotion.absolute. Sent while spectre drives the
+// pointer with relative motion, where only wraith knows where it ended up
+// (edge clamping, confine regions, locks, cursor-hint warps).
+message CursorPosition {
+  double x = 1;
+  double y = 2;
+}
+
+// spectre -> wraith, only after SessionAccept (gdp-spec.md §7.10): end the desktop session -- not
+// just this connection -- the way the desktop's own logout would. Unconditional and unacknowledged:
+// the CONNECTION_CLOSE that follows (SESSION_ENDED, gdp-spec.md §12) is the completion signal.
+message LogoutRequest {}
+
+// wraith -> spectre, after SessionAccept: an AUTO session's rate control
+// reclassified the link (gdp-spec.md §6.9).
+// Informational, like SessionAccept.network_profile, which it supersedes.
+message NetworkProfileChanged {
+  NetworkProfile profile = 1;
+}
+
+// spectre -> wraith, after SessionAccept, only on a session that
+// negotiated "refine" (gdp-spec.md §7.8): stop or resume building the
+// lossless tile layer -- the client's Lossless switch. The
+// capability stays in effect either way; a paused host sends a reset
+// layer and then empty ones. Every connection starts unpaused.
+message RefinePause {
+  bool paused = 1;
+}
+
+// wraith -> spectre: send a DiagnosticsReport (gdp-spec.md §7.11). Sent
+// only when the session's user ran `wraith --report` in the desktop.
+message DiagnosticsRequest {}
+
+// spectre -> wraith, once per DiagnosticsRequest: what the client would
+// say if asked why something isn't working, as plain text -- its log,
+// the decoder and GPU it ended up with, what it offered. wraith puts it
+// in the user's report as it is.
+message DiagnosticsReport {
+  bytes text = 1;  // at most 512 KiB; not necessarily valid UTF-8
+}
+
+message StreamStats {
+  uint32 stream_id = 1;
+  uint32 highest_frame_id_acked = 2;
+  uint64 loss_bitmap = 3;       // bit i set = frame_id (highest - i) was lost, i in [0,64)
+  uint32 decode_us = 4;
+  uint32 present_us = 5;
+  // Receive-side measurements over this report's window (gdp-spec.md §7.5).
+  // All zero from a spectre that can't measure them;
+  // interval_us == 0 is how wraith tells.
+  uint32 interval_us = 6;       // how long the window was
+  uint64 bytes_received = 7;    // video datagram bytes received in it, headers included
+  // One-way delay of each frame's first slice: arrival on spectre's session
+  // clock minus the frame's pts. The two clocks are zeroed at different
+  // moments (§11), so the value carries an unknown constant offset and can be
+  // negative; only its movement is meaningful. Both are 0 (and
+  // delay_samples is 0) when no first slice arrived in the window.
+  sint32 delay_min_us = 8;
+  sint32 delay_avg_us = 9;
+  uint32 delay_samples = 10;
+  // How the larger frames completed in this window arrived (gdp-spec.md
+  // §7.5): their datagrams leave the host back to back, so the
+  // spread the path puts between them measures its slowest hop. Absent
+  // from a spectre that doesn't measure it.
+  repeated FrameTrain trains = 11;
+}
+
+message FrameTrain {
+  uint32 frame_id = 1;
+  uint32 datagrams = 2;  // all of the frame's datagrams, every one arrived
+  uint32 bytes = 3;      // datagram bytes after the first to arrive, headers included
+  uint32 span_us = 4;    // first arrival to last, as the transport's network thread read them
+}
+
+message StatsReport {
+  uint32 rtt_us = 1;
+  repeated StreamStats streams = 2;
+}
+
+// Sent only by a gateway (Veil), toward the client, about once a second:
+// the round trip of the leg beyond it, so the client can show and report
+// the whole path's RTT (its own connection ends at the gateway).
+message GatewayPath {
+  uint32 upstream_rtt_us = 1;
+}
+
+message Ping {
+  uint64 nonce = 1;
+}
+
+message Pong {
+  uint64 nonce = 1;
+}
+
+// --- Input stream (gdp-spec.md §8) ---
+
+message InputEnvelope {
+  uint64 client_time_us = 1;
+  oneof event {
+    KeyEvent key = 2;
+    PointerMotion pointer_motion = 3;
+    PointerButton pointer_button = 4;
+    PointerAxis pointer_axis = 5;
+    TouchEvent touch = 6;
+    GamepadConnect gamepad_connect = 7;
+    GamepadState gamepad = 8;
+    GamepadDisconnect gamepad_disconnect = 9;
+    HidConnect hid_connect = 10;
+    HidInput hid_input = 11;
+    HidGetReportReply hid_get_report_reply = 12;
+    HidSetReportReply hid_set_report_reply = 13;
+  }
+}
+
+// wraith -> spectre on the input stream, only under the "hid" capability
+// (gdp-spec.md §8.4, §8.6). Nothing else is sent toward the client there.
+message HostInputEnvelope {
+  oneof event {
+    HidRejected hid_rejected = 1;
+    HidOutput hid_output = 2;
+    HidGetReport hid_get_report = 3;
+    HidSetReport hid_set_report = 4;
+  }
+}
+
+enum KeyState {
+  KEY_STATE_UNSPECIFIED = 0;
+  KEY_STATE_PRESSED = 1;
+  KEY_STATE_RELEASED = 2;
+}
+
+message KeyEvent {
+  uint32 hid_usage = 1;  // USB HID usage ID, not evdev/scancode -- see gdp-spec.md §8
+  KeyState state = 2;
+}
+
+message PointerMotion {
+  double dx = 1;
+  double dy = 2;
+  bool absolute = 3;   // if true, dx/dy are 0..1 normalized, not a delta
+}
+
+message PointerButton {
+  uint32 button = 1;   // Linux input-event-codes.h BTN_* value
+  KeyState state = 2;  // PRESSED/RELEASED reused; there's no third pointer state
+}
+
+message PointerAxis {
+  double horizontal = 1;
+  double vertical = 2;
+}
+
+// Gamepads (gdp-spec.md §8.5), only on a session that
+// negotiated the "gamepad" capability -- a peer drops all three otherwise.
+// pad_index is a client-chosen slot in [0, gdp::kMaxGamepads); the host
+// keeps one virtual device per slot for as long as it is connected.
+
+// spectre -> wraith: a controller appeared in `pad_index`. `name` is for
+// logs only, never trusted for anything. A connect for a slot that is
+// already connected replaces it.
+message GamepadConnect {
+  uint32 pad_index = 1;
+  string name = 2;
+}
+
+// spectre -> wraith: the controller in `pad_index` went away. A
+// disconnect for a slot that isn't connected is ignored.
+message GamepadDisconnect {
+  uint32 pad_index = 1;
+}
+
+// spectre -> wraith: the full current state of the controller in
+// `pad_index` -- every axis and every button, in SDL3's gamepad order as
+// pinned in libgdp's gdp/gamepad.hpp (the wire does not depend on the SDL
+// version either end links). Axes are -1..1 for sticks, 0..1 for
+// triggers. A snapshot rather than per-control events so a lost or
+// reordered frame can never leave a button stuck: the host diffs against
+// what it last wrote. Shorter arrays are padded with 0/false on the host,
+// longer ones are truncated.
+message GamepadState {
+  uint32 pad_index = 1;
+  repeated float axes = 2;
+  repeated bool buttons = 3;
+}
+
+// Raw HID controllers (gdp-spec.md §8.6), only on a session that
+// negotiated both "gamepad" and "hid". A raw controller takes a slot like
+// a gamepad does, and GamepadDisconnect ends it.
+
+// spectre -> wraith: the controller in `pad_index`, raw. wraith has ghostd
+// create a uhid device with exactly this identity and descriptor, so the
+// host's own driver for the controller binds to it.
+message HidConnect {
+  uint32 pad_index = 1;
+  string name = 2;               // the product name, as the platform reports it
+  uint32 bus = 3;                // Linux BUS_*: 3 USB, 5 Bluetooth
+  uint32 vendor_id = 4;
+  uint32 product_id = 5;
+  uint32 version = 6;            // bcdDevice / release number
+  string uniq = 7;               // serial; a Bluetooth address as aa:bb:cc:dd:ee:ff
+  bytes report_descriptor = 8;   // 1..4096 bytes
+}
+
+// wraith -> spectre: the slot's raw controller was refused or failed (no
+// uhid, ghostd's policy, the driver didn't bind) and the slot is empty.
+// spectre may forward the same controller as a gamepad instead.
+message HidRejected {
+  uint32 pad_index = 1;
+  string reason = 2;  // for logs
+}
+
+// spectre -> wraith: one input report as the controller delivered it,
+// with its report ID first only if the descriptor numbers its reports.
+message HidInput {
+  uint32 pad_index = 1;
+  bytes data = 2;  // at most 4096 bytes
+}
+
+// wraith -> spectre: an output report for the controller, report ID first
+// (0 when unnumbered).
+message HidOutput {
+  uint32 pad_index = 1;
+  bytes data = 2;
+}
+
+enum HidReportType {
+  HID_REPORT_TYPE_UNSPECIFIED = 0;
+  HID_REPORT_TYPE_INPUT = 1;
+  HID_REPORT_TYPE_OUTPUT = 2;
+  HID_REPORT_TYPE_FEATURE = 3;
+}
+
+// wraith -> spectre: the host's driver reads a report synchronously
+// (GET_REPORT). spectre answers with HidGetReportReply, same request_id.
+message HidGetReport {
+  uint32 pad_index = 1;
+  uint32 request_id = 2;
+  uint32 report_id = 3;
+  HidReportType type = 4;
+}
+
+message HidGetReportReply {
+  uint32 pad_index = 1;
+  uint32 request_id = 2;
+  bool failed = 3;
+  bytes data = 4;  // report ID first
+}
+
+// wraith -> spectre: the host's driver writes a report synchronously
+// (SET_REPORT). spectre answers with HidSetReportReply, same request_id.
+message HidSetReport {
+  uint32 pad_index = 1;
+  uint32 request_id = 2;
+  uint32 report_id = 3;
+  HidReportType type = 4;
+  bytes data = 5;  // report ID first (0 when unnumbered)
+}
+
+message HidSetReportReply {
+  uint32 pad_index = 1;
+  uint32 request_id = 2;
+  bool failed = 3;
+}
+
+message TouchEvent {
+  enum Phase {
+    PHASE_UNSPECIFIED = 0;
+    PHASE_DOWN = 1;
+    PHASE_MOVE = 2;
+    PHASE_UP = 3;
+    PHASE_CANCEL = 4;
+  }
+  uint32 touch_id = 1;
+  Phase phase = 2;
+  double x = 3;  // 0..1 normalized
+  double y = 4;
+}

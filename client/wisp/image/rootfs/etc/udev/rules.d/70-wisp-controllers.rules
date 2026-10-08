@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# spectre forwards a controller raw through its hidraw node
+# (docs/design/audio-cursor-gamepad.md#raw-controllers), which udev
+# leaves to root unless something tags it; Steam's own rules would, but
+# the image has no Steam. This gives the signed-in kiosk user (uaccess:
+# whoever is active on seat0) the hidraw nodes of the controller vendors
+# whose pads have host drivers worth reaching: Sony, Nintendo, Valve,
+# Microsoft (Xbox pads over Bluetooth) and 8BitDo. Anything else is
+# forwarded as a standard pad.
+#
+# Matched on the HID device's name, bus:vendor:product.N, so USB and
+# Bluetooth alike. Before 73-seat-late, which applies uaccess.
+KERNEL=="hidraw*", KERNELS=="*:054C:*|*:057E:*|*:28DE:*|*:045E:*|*:2DC8:*", TAG+="uaccess"

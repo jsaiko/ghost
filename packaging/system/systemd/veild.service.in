@@ -1,0 +1,50 @@
+# veild system unit (docs/design/veil.md). Template: the Makefile's
+# install-veil target expands @GHOST_BINDIR@ and puts the result in
+# $PREFIX/lib/systemd/system/veild.service. Never installed by the plain
+# `make install` a GDP host gets.
+[Unit]
+Description=Veil, the ghost broker
+After=network-online.target ghostauth.socket
+Wants=network-online.target
+Requires=ghostauth.socket
+
+[Service]
+Type=simple
+# Settings live in /etc/ghost/veild.toml; no flags here, since they would
+# silently override the file. A broken config fails the start with
+# veild's own error (`systemctl status veild`).
+ExecStartPre=@GHOST_BINDIR@/veild -t
+ExecStart=@GHOST_BINDIR@/veild
+# SIGHUP reloads the web UI's HTTPS certificate (an ACME renewal hook
+# runs `systemctl reload veild`).
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=2
+# The veil user is in the ghost group, which lets it reach ghostauth's
+# socket: PAM runs there, never in veild, so veild reads no passwords
+# from /etc/shadow. The ports below 1024 (HTTPS) come from the
+# capability, not from running as root.
+User=veil
+Group=veil
+SupplementaryGroups=ghost
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+StateDirectory=veil
+StateDirectoryMode=0700
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

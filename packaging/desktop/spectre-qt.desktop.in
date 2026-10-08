@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Spectre
+GenericName=GDP Client
+Comment=Connect to a ghost session over GDP
+Exec=@GHOST_BINDIR@/spectre-qt
+Icon=spectre-qt
+Terminal=false
+Categories=Network;RemoteAccess;
+StartupNotify=true

@@ -1,0 +1,12 @@
+ghost (0.6.66) unstable; urgency=medium
+
+  * Version bump to 0.6.66.
+
+ -- Joseph Saiko <68829025+jsaiko@users.noreply.github.com>  Thu, 08 Oct 2026 02:48:55 +0000
+
+ghost (0.1.0) unstable; urgency=medium
+
+  * Initial Debian packaging: ghostd (host), veild (Veil broker), spectre
+    (client) and libgdp-dev.
+
+ -- Joseph Saiko <68829025+jsaiko@users.noreply.github.com>  Sun, 04 Oct 2026 12:00:00 +0000

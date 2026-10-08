@@ -1,0 +1,58 @@
+// SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+// SPDX-License-Identifier: GPL-3.0-only
+
+// ghostd or veild -> ghostauth, over /run/ghost/auth.sock
+// (docs/design/login-and-sessions.md#authentication). systemd accepts
+// each connection and starts one ghostauth instance for it, which runs a
+// single PAM authenticate + acct_mgmt transaction and exits. One Start,
+// then one Prompt from the helper per PAM conversation callback, each
+// answered with an Answer, then one Done. Framed like GDP's streams
+// (gdp-spec.md §3.1), every frame capped at 16 KiB: the caller is a
+// network-facing process relaying an unauthenticated peer's bytes.
+syntax = "proto3";
+package ghost.ghostauth;
+
+message AuthEnvelope {
+  oneof msg {
+    Start start = 1;
+    Prompt prompt = 2;
+    Answer answer = 3;
+    Done done = 4;
+  }
+}
+
+// The caller's first and only unprompted frame.
+message Start {
+  // The /etc/pam.d service to open: "ghostd" or "veild", nothing else.
+  string service = 1;
+  string username = 2;
+  // The client's address, for PAM_RHOST (pam_access, sssd, the log).
+  // Empty leaves PAM_RHOST unset.
+  string rhost = 3;
+  // sshd's PermitEmptyPasswords: without it, pam_authenticate gets
+  // PAM_DISALLOW_NULL_AUTHTOK.
+  bool permit_empty_passwords = 4;
+}
+
+// One PAM conversation callback (prompt_echo_on / prompt_echo_off). The
+// caller relays it to its client as an AuthChallenge.
+message Prompt {
+  string message = 1;
+  bool echo = 2;
+}
+
+// The client's AuthResponse, relayed back.
+message Answer {
+  string response = 1;
+}
+
+// The transaction's outcome; the helper exits right after sending it.
+message Done {
+  bool ok = 1;
+  // Why not, for the caller's log line. Never shown to the client.
+  string error = 2;
+  // On success: the ticket ghostseat requires in its Open request
+  // (host/authticket), proving this username authenticated from rhost.
+  // veild discards it.
+  string ticket = 3;
+}

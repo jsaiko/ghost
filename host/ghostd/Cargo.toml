@@ -1,0 +1,30 @@
+[package]
+name = "ghostd"
+version = "0.6.66"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "ghostd"
+path = "src/main.rs"
+
+[dependencies]
+ipc = { path = "../ipc" }
+pamconv = { path = "../pamconv" }
+authticket = { path = "../authticket" }
+preauth = { path = "../preauth" }
+gdpnet = { path = "../gdpnet" }
+tomlconf = { path = "../tomlconf" }
+quinn = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "io-util", "time"] }
+nix = { version = "0.31", features = ["fs", "process", "user"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.9"
+anyhow = "1"
+zeroize = "1"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+toml = "1.1.6"

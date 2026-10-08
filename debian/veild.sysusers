@@ -1,0 +1,6 @@
+# The broker's account. It is in the ghost group so it can reach the PAM
+# helper's socket (ghostauth, which creates the group); veild never reads
+# /etc/shadow itself.
+u veil - "Veil broker" /var/lib/veil /usr/sbin/nologin
+m veil ghost
+g ghost-admins -

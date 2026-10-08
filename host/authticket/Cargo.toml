@@ -1,0 +1,13 @@
+[package]
+name = "authticket"
+version = "0.6.66"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+hmac = "0.12"
+nix = { version = "0.31", features = ["user", "fs"] }
+rand = "0.9"
+sha2 = "0.10"

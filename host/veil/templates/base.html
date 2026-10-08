@@ -1,0 +1,41 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
+<title>{% block title %}Veil{% endblock %} · Veil</title>
+<link rel="stylesheet" href="/admin/static/style.css">
+<script src="/admin/static/htmx.min.js" defer></script>
+<script src="/admin/static/admin.js" defer></script>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ nav.csrf }}"}'>
+<header>
+  <span class="brand">Veil</span>
+  <nav>
+    <a href="/admin/hosts"{% if nav.active == "hosts" %} class="active"{% endif %}>Hosts</a>
+    <a href="/admin/thin-clients"{% if nav.active == "thin_clients" %} class="active"{% endif %}>Thin Clients</a>
+    <a href="/admin/audit"{% if nav.active == "audit" %} class="active"{% endif %}>Audit log</a>
+  </nav>
+  <div class="whoami">
+    <a href="/">User Interface</a>
+    <div class="user-menu">
+      <button type="button" class="user-badge" aria-haspopup="menu">{{ nav.user }}</button>
+      <div class="user-menu-items" role="menu">
+        <form method="post" action="/admin/logout">
+          <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+          <button type="submit" role="menuitem">Sign out</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</header>
+<main>
+{% if !nav.notice.is_empty() %}<p class="notice">{{ nav.notice }}</p>{% endif %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

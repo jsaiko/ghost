@@ -1,0 +1,11 @@
+[package]
+name = "tomlconf"
+version = "0.6.66"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[dependencies]
+anyhow = "1"
+nix = { version = "0.31", features = ["user"] }
+serde = "1"
+toml = "1.1.6"

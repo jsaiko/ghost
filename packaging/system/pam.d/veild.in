@@ -1,0 +1,9 @@
+# PAM service for veild's logins: the lobby and the admin web UI
+# (docs/design/veil.md). Installed as /etc/pam.d/veild by `make
+# install-veil`, from this template (pam-render.sh).
+#
+# Authentication and account validity only, as packaging/system/pam.d/ghostd.in:
+# Veil opens no session. Opened by ghostauth on veild's behalf, never by
+# veild itself (docs/design/login-and-sessions.md#authentication).
+auth     include    @PAM_AUTH@
+account  include    @PAM_ACCOUNT@

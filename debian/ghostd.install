@@ -1,0 +1,20 @@
+usr/bin/ghostd
+usr/bin/wraith
+usr/lib/ghost/ghostlogin
+usr/lib/ghost/ghostseat
+usr/lib/ghost/sessions
+usr/lib/systemd/system/ghostd.service
+usr/lib/systemd/system/ghostseat.socket
+usr/lib/systemd/system/ghostseat@.service
+usr/lib/sysusers.d/ghostd.conf
+usr/lib/tmpfiles.d/ghost.conf
+usr/lib/systemd/user
+usr/lib/udev/rules.d/72-ghost-input.rules
+usr/share/applications/wraith.desktop
+usr/share/ghost
+usr/share/pam-configs/ghostlogin
+etc/pam.d/ghostd
+etc/pam.d/ghostseat
+etc/polkit-1/rules.d/49-ghost-sessions.rules
+usr/share/doc/ghost/ghostd.toml etc/ghost
+usr/share/doc/ghost/wraith.toml etc/ghost

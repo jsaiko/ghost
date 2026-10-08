@@ -1,0 +1,7 @@
+[Session]
+Enabled=true
+Name=LXQt
+Backend=screencast-ext
+Exec=@GHOST_LIBEXECDIR@/sessions/lxqt-screencast
+TryExec=startlxqt labwc
+LogoutExec=busctl --user call org.lxqt.session /LXQtSession org.lxqt.session logout

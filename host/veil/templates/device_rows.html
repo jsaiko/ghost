@@ -1,0 +1,13 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+{% for d in rows %}
+<tr>
+  <td><a href="/admin/hosts/{{ d.id }}">{{ d.name }}</a>{% if d.name != d.hostname %}<div class="muted small">{{ d.hostname }}</div>{% endif %}</td>
+  <td>{% if !d.enabled %}<span class="badge off">disabled</span>{% else if d.online %}<span class="badge on">online</span>{% else %}<span class="badge">offline</span>{% endif %}</td>
+  <td class="mono">{{ d.client_address }}</td>
+  <td>{{ d.mode }}</td>
+  <td>{% for s in d.sessions %}<div>{{ s.username }} <span class="muted small">{{ s.session_type }}{% if s.viewer %} · viewing{% endif %}{% if !s.throughput.is_empty() %} · {{ s.throughput }}{% endif %}</span></div>{% else %}<span class="muted">none</span>{% endfor %}</td>
+  <td class="muted">{{ d.last_seen }}</td>
+</tr>
+{% endfor %}

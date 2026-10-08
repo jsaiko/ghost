@@ -1,0 +1,34 @@
+# Opens the logind session: authentication and account checks ran in
+# ghostauth, on the ghostd stack (/etc/pam.d/ghostd,
+# packaging/system/pam.d/ghostd.in), before ghostseat is ever started
+# (docs/design/login-and-sessions.md). Installed as /etc/pam.d/ghostseat
+# by `cmake --install` (GHOST_PAM_DIR).
+# A template: pam-render.sh fills in the distro's stack names.
+#
+# The auth stack decides nothing -- pam_permit is its only required line.
+# It exists for two reasons:
+#
+# - Context::open_session always calls pam_setcred(ESTABLISH_CRED) first
+#   and aborts if it fails, and Linux-PAM resolves setcred through the
+#   service's own auth stack. With no auth lines it would fall back to
+#   /etc/pam.d/other's auth stack, which on distros where "other" is all
+#   pam_deny would fail every open.
+#
+# - Unlocking the user's wallet/keyring at login, as a display manager's
+#   stack does. ghostseat runs pam_authenticate once, answering the
+#   password prompt with the password ghostd passes it in Open, but only when the
+#   login is the one that opens the session. pam_unix is there only to
+#   read that answer into PAM_AUTHTOK, the item the keyring modules take
+#   the password from (applications can't set it themselves); if it fails
+#   (an account pam_unix doesn't know), the wallet stays locked and the
+#   login goes on. The keyring modules' auth half remembers the password,
+#   their session half unlocks with it, which only works because both run
+#   in this one PAM handle. The leading `-` skips a module that isn't
+#   installed.
+auth     optional   pam_unix.so nodelay
+auth     required   pam_permit.so
+-auth    optional   pam_gnome_keyring.so
+-auth    optional   pam_kwallet5.so
+session  include    @PAM_SESSION@
+-session optional   pam_gnome_keyring.so auto_start
+-session optional   pam_kwallet5.so auto_start

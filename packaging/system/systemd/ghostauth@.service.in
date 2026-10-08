@@ -1,0 +1,63 @@
+# One PAM authentication (host/ghostauth), started by ghostauth.socket per
+# connection. Template: the top-level CMakeLists.txt expands
+# @GHOST_LIBEXECDIR@ at configure time.
+#
+# The helper runs as the ghostauth user, whose one privilege is
+# CAP_DAC_READ_SEARCH: read access to /etc/shadow, which pam_unix then
+# reads itself. Not the shadow group: that only means something on
+# Debian's root:shadow 0640 layout; Arch and Fedora ship the file
+# root:root with no group, where no unprivileged process can check
+# another user's password (unix_chkpwd drops to the caller's uid for any
+# user but its own). The capability works on all of them with the file
+# untouched. A bug in a PAM module fed an unauthenticated peer's username
+# and password lands here, in a throwaway process with this sandbox, and
+# not in the network-facing daemon. Modules that must write as root
+# (pam_faillock's tally) don't work from here; ghost's own penalties
+# stand in for them.
+[Unit]
+Description=Ghost PAM helper (%i)
+CollectMode=inactive-or-failed
+
+[Service]
+Type=simple
+ExecStart=@GHOST_LIBEXECDIR@/ghostauth
+User=ghostauth
+Group=ghostauth
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
+# A caller that never finishes its login: the callers' own grace time is
+# 2 minutes.
+RuntimeMaxSec=300
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+# Should a pam_unix fork unix_chkpwd anyway, it calls setuid(getuid())
+# for a user other than the caller; SIGSYS there fails every password
+# login. The ambient capability survives that exec (the setuid bit is
+# void under NoNewPrivileges=, so the binary is treated as plain), and
+# without CAP_SETUID the @setuid calls can't change identity.
+SystemCallFilter=@setuid
+# pam_sss talks to sssd over a Unix socket; pam_ldap and pam_krb5 over
+# the network.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077

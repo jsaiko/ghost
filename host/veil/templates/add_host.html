@@ -1,0 +1,31 @@
+{# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev> #}
+{# SPDX-License-Identifier: GPL-3.0-only #}
+
+{% extends "base.html" %}
+{% block title %}Add host{% endblock %}
+{% block content %}
+<h1>Add host</h1>
+{% if command.is_empty() %}
+<p>Issue a one-time join token, then run the command it gives on the host as root. The host must have ghost installed (<code>make install</code>).</p>
+<form method="post" action="/admin/hosts/new" class="row">
+  <input type="hidden" name="csrf" value="{{ nav.csrf }}">
+  <label>Valid for
+    <select name="ttl">
+      <option value="15m">15 minutes</option>
+      <option value="1h" selected>1 hour</option>
+      <option value="1d">1 day</option>
+    </select></label>
+  <button type="submit">Issue token</button>
+</form>
+{% else %}
+<p>On the host, as root, within {{ ttl }} (the token works once):</p>
+<pre class="command" id="join-command">{{ command }}</pre>
+<p><button type="button" data-copy="join-command">Copy</button></p>
+<ol class="muted">
+  <li>Add <code>--address &lt;name&gt;</code> if clients should reach the host by something other than its hostname.</li>
+  <li>Restart ghostd on the host: <code>systemctl restart ghostd</code>. It appears on the <a href="/admin/hosts">Hosts</a> page.</li>
+  <li>Give users or groups access on the device's page.</li>
+  <li>Optionally set <code>broker_only = true</code> under <code>[broker]</code> in the host's ghostd.toml, so nobody can log in to it directly.</li>
+</ol>
+{% endif %}
+{% endblock %}

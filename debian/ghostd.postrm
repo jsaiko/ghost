@@ -1,0 +1,24 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+set -e
+
+case "$1" in
+remove|purge)
+    # The package's pam-configs profile is gone; take it out of the stacks.
+    if command -v pam-auth-update >/dev/null 2>&1; then
+        pam-auth-update --package
+    fi
+    ;;
+esac
+
+case "$1" in
+purge)
+    rm -f /etc/ghost/host-cert.pem /etc/ghost/host-key.pem
+    rmdir --ignore-fail-on-non-empty /etc/ghost 2>/dev/null || true
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

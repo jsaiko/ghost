@@ -1,0 +1,15 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+set -e
+
+case "$1" in
+purge)
+    rm -f /etc/ghost/auth-ticket.key
+    rmdir --ignore-fail-on-non-empty /etc/ghost 2>/dev/null || true
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,140 @@
+// SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+// SPDX-License-Identifier: GPL-3.0-only
+
+// ghostd <-> ghostseat (docs/design/login-and-sessions.md). Three sockets
+// carry this envelope, one request per connection, framed like GDP's
+// streams (gdp-spec.md §3.1):
+//
+// - /run/ghost/seat.sock (systemd's ghostseat.socket): ghostd's Open
+//   starts a fresh ghostseat instance, which answers Opened or
+//   GhostseatError on the same connection and then lives on as that
+//   session's root process.
+// - /run/ghost/<uid>-seat.sock, bound by the instance: ghostd's STATUS
+//   and CLOSE for the open session. The path comes from the uid alone, so
+//   ghostd finds every open session after its own restart.
+// - /run/ghost/events.sock, bound by ghostd: the instance's Event, one
+//   connection each, no reply.
+//
+// ghostd runs unprivileged and ghostseat as root: the Open carries a
+// ticket from ghostauth (host/authticket) proving the user authenticated,
+// and ghostseat trusts nothing else in it.
+syntax = "proto3";
+package ghost.ghostseat;
+
+message GhostseatEnvelope {
+  oneof msg {
+    Open open = 1;
+    Opened opened = 2;
+    StatusRequest status = 3;
+    StatusReply status_reply = 4;
+    CloseRequest close = 5;
+    CloseReply closed = 6;
+    GhostseatError error = 7;
+    Event event = 8;
+    MintTokenRequest mint_token = 9;
+    TokenMinted token_minted = 10;
+  }
+}
+
+// ghostd -> a new instance: open a logind session for this user and
+// start their desktop.
+message Open {
+  uint32 uid = 1;
+  string username = 2;
+  // The client's address: PAM_RHOST, and what the ticket was minted for.
+  string client_ip = 3;
+  // ghostauth's ticket for (username, client_ip).
+  string ticket = 4;
+  // The login password, for the keyring unlock
+  // (docs/design/login-and-sessions.md#wallet-and-keyring-unlock); empty
+  // when the stack asked for none.
+  bytes authtok = 5;
+  // The sessions.d profile id ghostd validated for this login, for
+  // wraith's SessionInit.
+  string session_type = 6;
+  // No session secret here: ghostseat generates the one it mints redirect
+  // tokens with (SessionInit.session_secret) itself, so a compromised
+  // ghostd can't mint tokens for a session it opened.
+  // SessionInit's port range. The sessions directory is not here:
+  // ghostseat reads ghostd.toml's sessions.dir itself (main.rs), since
+  // wraith execs what it finds there as the user.
+  uint32 port_range_start = 7;
+  uint32 port_range_end = 8;
+}
+
+// The reply to Open once wraith has reported SessionReady, with the
+// first redirect token (gdp-spec.md §4.8), minted against the Open's
+// ticket.
+message Opened {
+  string session_id = 1;  // logind's, for the log
+  uint32 port = 2;
+  string cert_sha256 = 3;
+  string token = 4;
+  int64 token_expiry_unix = 5;
+}
+
+message StatusRequest {}
+message StatusReply {
+  uint32 uid = 1;
+  string username = 2;
+  // logind's id (XDG_SESSION_ID after open), e.g. "104" --
+  // cross-references `loginctl show-session`.
+  string session_id = 3;
+  int64 opened_at = 4;
+  string session_type = 5;
+  // wraith's GDP listener, as SessionReady reported it. The session
+  // secret stays here: a reattaching login gets its token from
+  // MintTokenRequest.
+  uint32 port = 6;
+  string cert_sha256 = 7;
+  reserved 8;
+  bool viewer_attached = 9;
+}
+
+// ghostd -> the instance, on <uid>-seat.sock: a redirect token for a
+// login that reattaches to this session. The ticket is ghostauth's for
+// (username, client_ip), as in Open, and is spent here: one ticket opens
+// or reattaches once, so a ghostd that lost its way can't mint tokens for
+// a session nobody just logged in to.
+message MintTokenRequest {
+  string username = 1;
+  string client_ip = 2;
+  string ticket = 3;
+}
+message TokenMinted {
+  string token = 1;
+  int64 expiry_unix = 2;
+}
+
+// ghostd -> the instance: end the session. With `logout`, the desktop is
+// asked to log out first (wraith's SIGUSR1, then `systemctl stop`), as a
+// console login requires; without it, wraith is already gone. The reply
+// comes after pam_close_session, so the logind session is over by then.
+message CloseRequest {
+  bool logout = 1;
+}
+message CloseReply {}
+
+message GhostseatError {
+  string message = 1;
+  // A gdp-spec.md §12 code for ghostd's LobbyError when wraith reported
+  // one (HOST_FULL); 0 is SESSION_START_FAILED.
+  uint32 code = 2;
+}
+
+// The instance -> ghostd, as things happen; a lost one (ghostd
+// restarting) is corrected by ghostd's next STATUS.
+message Event {
+  uint32 uid = 1;
+  string username = 2;
+  oneof kind {
+    ViewerAttached viewer_attached = 3;
+    ViewerDetached viewer_detached = 4;
+    SessionEnded session_ended = 5;
+  }
+}
+message ViewerAttached {}
+message ViewerDetached {}
+message SessionEnded {
+  string reason = 1;
+}

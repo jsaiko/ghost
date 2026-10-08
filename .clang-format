@@ -1,0 +1,47 @@
+# The C/C++ style of libgdp/, host/wraith/ and client/: tab-indented,
+# attached braces, right-aligned pointers, arguments packed onto a line and
+# wrapped with a one-tab continuation. The tree is formatted with it
+# (clang-format 21); run it over a file before committing. Include order is
+# left alone (some orders are load-bearing), and string literals are never
+# split, so a log message stays greppable. .clang-format-ignore lists the
+# vendored code it must not touch.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++17
+
+UseTab: ForContinuationAndIndentation
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 110
+AccessModifierOffset: -4
+
+BreakBeforeBraces: Attach
+IndentCaseLabels: false
+NamespaceIndentation: None
+FixNamespaceComments: true
+
+PointerAlignment: Right
+SpaceAfterCStyleCast: false
+
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+AlignTrailingComments: true
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+BinPackArguments: true
+BinPackParameters: true
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllArgumentsOnNextLine: false
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: true
+
+IncludeBlocks: Preserve
+SortIncludes: Never
+BreakStringLiterals: false

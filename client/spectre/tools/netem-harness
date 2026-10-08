@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Joseph Saiko <https://saiko.dev>
+# SPDX-License-Identifier: GPL-3.0-only
+# Runs a wraith session across a netem-shaped link and measures it with
+# spectre_netprobe (tools/netprobe.cpp): the harness for wraith's rate
+# control and send-queue gating (docs/design/transport-and-rate-control.md#testing).
+#
+#   host namespace                      netns "ghostnet"
+#   wraith -l, 10.77.0.1  <== veth ==>  spectre_netprobe, 10.77.0.2
+#                                         ingress -> ifb: netem (video path)
+#                                         egress: netem (return path)
+#
+# The video direction is shaped on the receiving side, through an ifb
+# device, rather than on wraith's egress: a sender using UDP GSO
+# sends batches, which the kernel only splits into packets after the sending
+# qdisc -- netem there drops or delays a whole batch as one packet, turning
+# 1% random loss into rare bursts of tens of datagrams. By the time a
+# packet crosses the veth it is one datagram.
+#
+# wraith runs as the invoking user with a private XDG_RUNTIME_DIR and a
+# throwaway cert; only the namespace, veth and qdiscs need root (sudo). The
+# session is a scratch screencast-ext profile: labwc on a headless output,
+# running mpv playing fullscreen temporal noise over a test pattern: no two frames alike and nothing an encoder can predict, so it
+# always wants the whole bitrate ceiling -- the load a rate controller
+# exists for. (vkcube, the obvious choice, codes to ~5 Mbps.)
+#
+# Usage: netem-harness [-P profile|all] [-c bbr|cubic] [-N auto|lan|internet|mobile]
+#                      [-s seconds] [-r WIDTHxHEIGHT] [-b ceiling-bps] [-B build-dir]
+# TRACE=1 in the environment also prints wraith's per-report rate trace
+# (wraith.toml's network.rate_trace); KEEP=1 leaves the work directory
+# (wraith's full log) behind; PROBE_ARGS passes extra flags to spectre_netprobe (-R for
+# lossless refinement, which puts wraith on its CPU-frame path).
+# Profiles (down = wraith -> probe; up is the same delay, no rate limit):
+#   lan          no shaping
+#   broadband    10 ms each way, 0.1% loss, 50 Mbit down
+#   wifi         5 ms +-3 ms each way, 1.5% random loss, 30 Mbit down
+#   bufferbloat  15 ms each way, 10 Mbit down behind a ~0.5 s queue, no loss
+#   mobile       30 ms +-10 ms each way, 1% loss, 8 Mbit down
+#   uplink20     20 ms round trip, 20 Mbit down behind a 30-packet queue, no
+#                loss: a home upload with a cheap router's shallow buffer,
+#                where only bursts drop (docs/design/transport-and-rate-control.md)
+#   uplink50     the same at 50 Mbit
+# WRAITH_EXTRA adds lines to wraith's [network] settings, e.g.
+# WRAITH_EXTRA='pacing_multiplier = 0' for a run without pacing.
+set -euo pipefail
+
+profile=all
+cc=bbr
+probe_profile=auto
+seconds=20
+res=1920x1080
+ceiling=30000000
+build="$(cd "$(dirname "$0")/../../.." && pwd)/build"
+
+while getopts "P:c:N:s:r:b:B:h" opt; do
+	case "$opt" in
+	P) profile=$OPTARG ;;
+	c) cc=$OPTARG ;;
+	N) probe_profile=$OPTARG ;;
+	s) seconds=$OPTARG ;;
+	r) res=$OPTARG ;;
+	b) ceiling=$OPTARG ;;
+	B) build=$OPTARG ;;
+	*) sed -n '2,/^set -e/p' "$0" | sed 's/^# \{0,1\}//;/^set -e/d'; exit 1 ;;
+	esac
+done
+
+wraith_bin="$build/bin/wraith"
+probe_bin="$build/bin/spectre_netprobe"
+for b in "$wraith_bin" "$probe_bin"; do
+	[[ -x $b ]] || { echo "netem-harness: missing $b (build first)" >&2; exit 1; }
+done
+
+ns=ghostnet
+host_if=ghv0
+ns_if=ghv1
+ifb_if=ghifb
+host_ip=10.77.0.1
+ns_ip=10.77.0.2
+port=44577
+token=netem-harness
+me=$(id -un)
+work=$(mktemp -d /tmp/netem-harness.XXXXXX)
+runtime="$work/runtime"
+mkdir -m 700 "$runtime"
+
+# The session type wraith -p runs (-d takes the directory holding
+# sessions.d). labwc -S runs its command without a shell, so mpv's
+# arguments live in a script of their own; the empty -C directory keeps
+# the user's ~/.config/labwc out of it.
+mkdir "$work/sessions.d" "$work/labwc"
+cat >"$work/source.sh" <<EOS
+#!/bin/sh
+exec mpv --really-quiet --fs --loop --no-audio --vo=gpu --gpu-context=wayland 'av://lavfi:testsrc2=s=${res}:r=60,noise=alls=24:allf=t'
+EOS
+chmod +x "$work/source.sh"
+cat >"$work/sessions.d/netem.conf" <<EOS
+[Session]
+Name=netem-harness
+Backend=screencast-ext
+Exec=WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=1 exec labwc -C $work/labwc -S $work/source.sh
+EOS
+wraith_pid=
+
+cleanup() {
+	if [[ -n $wraith_pid ]] && kill -0 "$wraith_pid" 2>/dev/null; then
+		kill "$wraith_pid" 2>/dev/null || true
+		wait "$wraith_pid" 2>/dev/null || true
+	fi
+	sudo ip netns del "$ns" 2>/dev/null || true
+	sudo ip link del "$host_if" 2>/dev/null || true
+	if [[ -n ${KEEP:-} ]]; then
+		echo "netem-harness: kept $work"
+	else
+		rm -rf "$work"
+	fi
+}
+trap cleanup EXIT
+
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout "$work/key.pem" \
+	-out "$work/cert.pem" -days 1 -nodes -subj /CN=netem-harness >/dev/null 2>&1
+fingerprint=$(openssl x509 -in "$work/cert.pem" -noout -fingerprint -sha256 | cut -d= -f2)
+
+setup_link() {
+	sudo ip netns del "$ns" 2>/dev/null || true
+	sudo ip link del "$host_if" 2>/dev/null || true
+	sudo ip netns add "$ns"
+	sudo ip link add "$host_if" type veth peer name "$ns_if"
+	sudo ip link set "$ns_if" netns "$ns"
+	# NetworkManager adopts a new veth and, a moment later, resets it --
+	# taking the address below with it, so ARP for it goes unanswered and
+	# the session never connects (intermittently, depending on who wins).
+	if command -v nmcli >/dev/null; then
+		sudo nmcli device set "$host_if" managed no >/dev/null 2>&1 || true
+	fi
+	sudo ip addr add "$host_ip/24" dev "$host_if"
+	sudo ip link set "$host_if" up
+	sudo ip -n "$ns" addr add "$ns_ip/24" dev "$ns_if"
+	sudo ip -n "$ns" link set "$ns_if" up
+	sudo ip -n "$ns" link set lo up
+	# Make the veth segment GSO batches on transmit, so the peer (and the
+	# ifb behind it) receives one packet per datagram.
+	sudo ethtool -K "$host_if" gso off tx-udp-segmentation off >/dev/null 2>&1 || true
+	sudo ip netns exec "$ns" ethtool -K "$ns_if" gro off >/dev/null 2>&1 || true
+	sudo modprobe ifb numifbs=0
+	sudo ip -n "$ns" link add "$ifb_if" type ifb
+	sudo ip -n "$ns" link set "$ifb_if" up
+	sudo ip netns exec "$ns" tc qdisc add dev "$ns_if" handle ffff: ingress
+	sudo ip netns exec "$ns" tc filter add dev "$ns_if" parent ffff: matchall \
+		action mirred egress redirect dev "$ifb_if"
+}
+
+# netem arguments for each direction: down (wraith -> probe), up (back).
+shape() {
+	local down up
+	case "$1" in
+	lan) return 0 ;;
+	broadband)
+		down="delay 10ms loss 0.1% rate 50mbit limit 200"
+		up="delay 10ms" ;;
+	wifi)
+		down="delay 5ms 3ms distribution normal loss 1.5% rate 30mbit limit 200"
+		up="delay 5ms 3ms distribution normal" ;;
+	bufferbloat)
+		down="delay 15ms rate 10mbit limit 450"
+		up="delay 15ms" ;;
+	mobile)
+		down="delay 30ms 10ms distribution normal loss 1% rate 8mbit limit 150"
+		up="delay 30ms 10ms distribution normal" ;;
+	# netem's limit counts what its delay line holds too -- 43 packets at
+	# 50 Mbit and 10 ms, more than the whole queue -- so the uplink
+	# profiles keep the video direction delay-free and put the round trip
+	# on the way back, leaving limit to mean the router's queue alone.
+	uplink20)
+		down="rate 20mbit limit 30"
+		up="delay 20ms" ;;
+	uplink50)
+		down="rate 50mbit limit 30"
+		up="delay 20ms" ;;
+	*) echo "netem-harness: unknown profile $1" >&2; exit 1 ;;
+	esac
+	# shellcheck disable=SC2086
+	sudo ip netns exec "$ns" tc qdisc add dev "$ifb_if" root netem $down
+	# shellcheck disable=SC2086
+	sudo ip netns exec "$ns" tc qdisc add dev "$ns_if" root netem $up
+}
+
+run_one() {
+	local p=$1
+	echo "=== $p (QUIC $cc, client profile $probe_profile, ${res}, ceiling $((ceiling / 1000000)) Mbps)"
+	setup_link
+	shape "$p"
+
+	# Its own settings file rather than /etc/ghost/wraith.toml: the QUIC
+	# congestion controller under test, and the per-report rate trace.
+	printf '[network]\ncongestion_control = "%s"\nrate_trace = true\n%s\n' "$cc" "${WRAITH_EXTRA:-}" >"$work/wraith.toml"
+	XDG_RUNTIME_DIR="$runtime" \
+		"$wraith_bin" -C "$work/wraith.toml" -o "$res" -b "$ceiling" -l "$port" -t "$token" \
+		-c "$work/cert.pem" -k "$work/key.pem" -p netem -d "$work" >"$work/wraith-$p.log" 2>&1 &
+	wraith_pid=$!
+	sleep 2
+
+	if ! sudo ip netns exec "$ns" sudo -u "$me" "$probe_bin" -h "$host_ip" -p "$port" -t "$token" \
+		-P "$fingerprint" -s "$seconds" -N "$probe_profile" ${PROBE_ARGS:-}; then
+		echo "--- probe failed; wraith's log ends:"
+		grep -E "gdp:|ERROR" "$work/wraith-$p.log" | tail -15 | sed "s/^/  /"
+	fi
+
+	kill "$wraith_pid" 2>/dev/null || true
+	wait "$wraith_pid" 2>/dev/null || true
+	wraith_pid=
+	echo "--- wraith:"
+	grep -E 'gdp: (network profile|bitrate|queuing|video slices|QUIC|pacing)' "$work/wraith-$p.log" | sed 's/^/  /' | tail -25 || true
+	if [[ -n ${TRACE:-} ]]; then
+		echo "--- wraith rate trace:"
+		grep -E 'gdp: rate ' "$work/wraith-$p.log" | sed 's/^.*gdp: rate /  /' || true
+	fi
+	echo
+}
+
+if [[ $profile == all ]]; then
+	for p in lan broadband wifi bufferbloat mobile; do
+		run_one "$p"
+	done
+else
+	run_one "$profile"
+fi

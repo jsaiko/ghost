@@ -1,0 +1,6 @@
+# The kiosk unit's session (wisp-kiosk.service): no authentication, just a
+# logind session so labwc gets the seat.
+auth     required pam_permit.so
+account  required pam_permit.so
+session  required pam_unix.so
+session  required pam_systemd.so
