@@ -295,9 +295,11 @@ void stress_two_threads() {
 	// still buffered at the end, or was trimmed by an overrun during a
 	// stall. Loss is concealed, so it doesn't reduce the count. Overrun
 	// trimming is bounded by scheduling jitter; 10% is generous.
+	// stderr: an abort loses buffered stdout, and the count is what a
+	// failure needs to show.
+	fprintf(stderr, "stress: %zu of %d frames played\n", played, kStressFrames);
 	assert(played <= (size_t)kStressFrames);
 	assert(played >= (size_t)(kStressFrames * 9 / 10));
-	printf("stress: %zu of %d frames played\n", played, kStressFrames);
 }
 
 } // namespace
