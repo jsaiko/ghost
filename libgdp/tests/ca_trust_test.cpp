@@ -45,6 +45,14 @@ struct Certs {
 			fprintf(stderr, "ca_trust_test: can't create %s\n", kDir.c_str());
 			exit(1);
 		}
+		// A config of our own: the platform's (OpenSSL 1.1's on the macOS
+		// runner) adds its v3_ca extensions to req -x509, and a second
+		// basicConstraints makes OpenSSL 3 refuse the CA.
+		FILE *cnf = fopen((kDir + "/openssl.cnf").c_str(), "w");
+		assert(cnf);
+		fputs("[req]\ndistinguished_name = dn\n[dn]\n", cnf);
+		fclose(cnf);
+		setenv("OPENSSL_CONF", (kDir + "/openssl.cnf").c_str(), 1);
 		run("openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256" + kNamedCurve +
 			" -nodes -days 1 -subj /CN=gdp-test-ca"
 			" -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign"
