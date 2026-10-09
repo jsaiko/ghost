@@ -22,6 +22,10 @@
 namespace {
 
 const std::string kDir = "/tmp/gdp_ca_trust_test";
+// LibreSSL (macOS's openssl CLI) otherwise writes explicit curve
+// parameters, and signs with SHA-1 without -sha256: OpenSSL 3 refuses
+// both.
+const std::string kNamedCurve = " -pkeyopt ec_param_enc:named_curve";
 
 void run(const std::string &cmd) {
 	std::string full = cmd + " >>" + kDir + "/openssl.log 2>&1";
@@ -39,13 +43,15 @@ struct Certs {
 			fprintf(stderr, "ca_trust_test: can't create %s\n", kDir.c_str());
 			exit(1);
 		}
-		run("openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=gdp-test-ca"
+		run("openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256" + kNamedCurve +
+			" -nodes -days 1 -subj /CN=gdp-test-ca"
 			" -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign"
 			" -keyout " +
 			kDir + "/ca.key -out " + kDir + "/ca.pem");
 		leaf("good", "DNS:localhost,IP:127.0.0.1");
 		leaf("other", "DNS:other.test");
-		run("openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=localhost"
+		run("openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256" + kNamedCurve +
+			" -nodes -days 1 -subj /CN=localhost"
 			" -addext subjectAltName=DNS:localhost,IP:127.0.0.1"
 			" -keyout " +
 			kDir + "/self.key -out " + kDir + "/self.pem");
@@ -54,14 +60,14 @@ struct Certs {
 
 	static void leaf(const std::string &name, const std::string &san) {
 		std::string base = kDir + "/" + name;
-		run("openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj /CN=" + name +
-			" -keyout " + base + ".key -out " + base + ".csr");
+		run("openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256" + kNamedCurve +
+			" -nodes -subj /CN=" + name + " -keyout " + base + ".key -out " + base + ".csr");
 		FILE *ext = fopen((base + ".ext").c_str(), "w");
 		assert(ext);
 		fprintf(ext, "subjectAltName=%s\n", san.c_str());
 		fclose(ext);
 		run("openssl x509 -req -in " + base + ".csr -CA " + kDir + "/ca.pem -CAkey " + kDir +
-			"/ca.key -CAcreateserial -days 1 -extfile " + base + ".ext -out " + base + ".pem");
+			"/ca.key -CAcreateserial -sha256 -days 1 -extfile " + base + ".ext -out " + base + ".pem");
 	}
 };
 
