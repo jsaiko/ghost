@@ -157,7 +157,7 @@ if(NOT WIN32)
 
   # Also the openssl CLI and /tmp: a private CA and leaves it signs.
   add_executable(gdp_ca_trust_test tests/ca_trust_test.cpp)
-  target_link_libraries(gdp_ca_trust_test PRIVATE gdp)
+  target_link_libraries(gdp_ca_trust_test PRIVATE gdp OpenSSL::Crypto)
   add_test(NAME gdp_ca_trust_test COMMAND gdp_ca_trust_test)
 
   add_executable(gdp_stream_loss_test tests/stream_loss_test.cpp)

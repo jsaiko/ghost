@@ -15,6 +15,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <functional>
+#include <openssl/pem.h>
+#include <openssl/x509_vfy.h>
 #include <poll.h>
 #include <string>
 #include <unistd.h>
@@ -71,6 +73,37 @@ struct Certs {
 	}
 };
 
+// The openssl CLI's certificates are only as good as the CLI: check the
+// good leaf against the CA with the OpenSSL libgdp links, and say why it
+// fails rather than leave the handshake's bare "not verified".
+void check_certs() {
+	auto load = [](const std::string &name) {
+		FILE *f = fopen((kDir + "/" + name + ".pem").c_str(), "r");
+		assert(f);
+		X509 *x509 = PEM_read_X509(f, nullptr, nullptr, nullptr);
+		fclose(f);
+		assert(x509);
+		return x509;
+	};
+	X509 *ca = load("ca");
+	X509 *leaf = load("good");
+	X509_STORE *store = X509_STORE_new();
+	X509_STORE_add_cert(store, ca);
+	X509_STORE_CTX *ctx = X509_STORE_CTX_new();
+	X509_STORE_CTX_init(ctx, store, leaf, nullptr);
+	X509_VERIFY_PARAM_set1_ip_asc(X509_STORE_CTX_get0_param(ctx), "127.0.0.1");
+	if (X509_verify_cert(ctx) != 1) {
+		fprintf(stderr, "ca_trust_test: %s rejects the openssl CLI's certificates: %s\n",
+			OpenSSL_version(OPENSSL_VERSION), X509_verify_cert_error_string(X509_STORE_CTX_get_error(ctx)));
+		(void)!system("openssl version >&2");
+		exit(1);
+	}
+	X509_STORE_CTX_free(ctx);
+	X509_STORE_free(store);
+	X509_free(leaf);
+	X509_free(ca);
+}
+
 bool pump_until(gdp::Transport &a, gdp::Transport &b, int timeout_ms, const std::function<bool()> &done) {
 	struct timespec start;
 	clock_gettime(CLOCK_MONOTONIC, &start);
@@ -115,6 +148,7 @@ bool verified(uint16_t port, const std::string &cert, const std::string &dial, c
 
 int main() {
 	Certs certs;
+	check_certs();
 	gdp::CaTrust ours;
 	ours.extra_file = kDir + "/ca.pem";
 	gdp::CaTrust system_only;
