@@ -46,7 +46,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            build-essential clang cmake ninja-build pkg-config git curl ca-certificates \
+            build-essential clang libclang-rt-dev cmake ninja-build pkg-config git curl ca-certificates \
             protobuf-compiler libprotobuf-dev libssl-dev openssl \
             libngtcp2-dev libngtcp2-crypto-ossl-dev \
             wayland-protocols libwayland-dev libxkbcommon-dev \
