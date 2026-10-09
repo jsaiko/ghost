@@ -39,6 +39,10 @@ ctest --test-dir build-macos --output-on-failure
 
 On Apple silicon the triplet is `arm64-osx-dynamic`. The first configure
 builds every vcpkg dependency, which takes a while (FFmpeg is the longest).
+For a release-only build, which builds each dependency once instead of
+twice, add `-DVCPKG_OVERLAY_TRIPLETS=$PWD/packaging/macos/triplets
+-DVCPKG_TARGET_TRIPLET=arm64-osx-dynamic-release
+-DVCPKG_HOST_TRIPLET=arm64-osx-release`, as CI does.
 
 Use `-DCMAKE_BUILD_TYPE=RelWithDebInfo` (or `Release`) for anything but
 debugging spectre itself: a Debug build links vcpkg's debug libraries,
