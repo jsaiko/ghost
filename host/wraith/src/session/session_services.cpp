@@ -266,7 +266,7 @@ bool SessionServices::start_gdp_session(uint16_t port, TokenValidator token_vali
 			auto *self = static_cast<SessionServices *>(data);
 			WLOG_INFO("session: ghostd ended this session for a console login, logging out");
 			if (self->gdp_session_) {
-				self->gdp_session_->end_for_local_login();
+				self->gdp_session_->end(gdp::ErrorCode::kEndedByLocalLogin);
 			}
 			self->host_.request_logout();
 			return 0;

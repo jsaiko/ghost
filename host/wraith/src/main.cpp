@@ -159,7 +159,8 @@ int main(int argc, char *argv[]) {
 	// (SessionServices::start_gdp_session reads it through a signalfd).
 	// Blocked here, before any thread exists, so every thread inherits
 	// the mask: an encoder or PipeWire thread with it unblocked would take
-	// the default action and kill wraith outright.
+	// the default action and kill wraith outright. SIGTERM is blocked
+	// later, just before the host that reads it is made.
 	sigset_t usr1;
 	sigemptyset(&usr1);
 	sigaddset(&usr1, SIGUSR1);
@@ -307,6 +308,17 @@ int main(int argc, char *argv[]) {
 		}
 		return 1;
 	}
+
+	// SIGTERM is systemd stopping the unit (ScreencastHost reads it
+	// through a signalfd, to close the viewer before exiting). Blocked
+	// only from here: until now the default action is the right one --
+	// nothing is attached to tell, and a wraith still waiting on
+	// SessionInit must die on SIGTERM rather than at TimeoutStopSec. No
+	// thread exists yet, for the reason SIGUSR1's comment above gives.
+	sigset_t term;
+	sigemptyset(&term);
+	sigaddset(&term, SIGTERM);
+	pthread_sigmask(SIG_BLOCK, &term, nullptr);
 
 	auto screencast_host = std::make_unique<wraith::ScreencastHost>();
 	{

@@ -243,6 +243,10 @@ private:
 	int capture_reopen_retries_ = 0;
 	int open_retries_ = 0;
 	bool terminate_requested_ = false;
+	// SIGTERM: systemd stopping wraith.service, on its own or with the
+	// whole user manager at shutdown. main() blocks the signal.
+	EventSource stop_signal_source_;
+	void on_stop_signal();
 };
 
 } // namespace wraith

@@ -11,6 +11,7 @@
 #include <libdrm/drm_fourcc.h>
 
 #include <algorithm>
+#include <csignal>
 #include <cstdlib>
 
 #include <unistd.h>
@@ -30,6 +31,7 @@ ScreencastHost::ScreencastHost() = default;
 
 ScreencastHost::~ScreencastHost() {
 	terminate();
+	stop_signal_source_.reset();
 	// An open or input-reconnect retry can still be armed -- the input
 	// half drops as the desktop logs out, just before the loop stops. As a
 	// member it would be removed after wl_event_loop_destroy() below, and
@@ -106,6 +108,14 @@ bool ScreencastHost::init(Options options) {
 	}
 
 	session_ = std::make_unique<SessionServices>(*this);
+
+	stop_signal_source_.reset(wl_event_loop_add_signal(
+		event_loop_, SIGTERM,
+		[](int, void *data) {
+			static_cast<ScreencastHost *>(data)->on_stop_signal();
+			return 0;
+		},
+		this));
 	// Every screencast backend has a clipboard mechanism, but which one
 	// this compositor exports isn't known until the RemoteSession opens --
 	// seconds after the first client can attach, and capabilities are
@@ -723,6 +733,20 @@ void ScreencastHost::apply_capture_paused() {
 
 void ScreencastHost::terminate() {
 	terminate_requested_ = true;
+}
+
+void ScreencastHost::on_stop_signal() {
+	// The unit stopping is the session ending: ExecStopPost reports it
+	// over and the leader goes with wraith. The viewer hears it first,
+	// before a teardown that waits on the compositor -- at shutdown its
+	// D-Bus calls and the network both may not last -- or the client sits
+	// out the QUIC idle timeout.
+	WLOG_INFO("session: SIGTERM, ending the session");
+	if (GdpSession *gdp = session_->gdp_session()) {
+		gdp->end(gdp::ErrorCode::kSessionEnded);
+	}
+	session_ended_ = true;
+	terminate();
 }
 
 void ScreencastHost::on_capture_closed(const std::string &error) {

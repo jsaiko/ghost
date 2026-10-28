@@ -261,9 +261,9 @@ void GdpSession::reset_session(uint64_t error_code) {
 	rate_.reset();
 }
 
-void GdpSession::end_for_local_login() {
-	ended_by_local_login_ = true;
-	reset_session(static_cast<uint64_t>(gdp::ErrorCode::kEndedByLocalLogin));
+void GdpSession::end(gdp::ErrorCode code) {
+	ended_code_ = code;
+	reset_session(static_cast<uint64_t>(code));
 }
 
 void GdpSession::handle_new_connection(std::unique_ptr<gdp::Connection> conn) {
@@ -402,12 +402,12 @@ bool GdpSession::handle_hello(Peer *peer, const gdp::session::ControlEnvelope &e
 		reject_pending(peer, "invalid token");
 		return false;
 	}
-	if (ended_by_local_login_) {
-		// A reconnect racing the logout: it proved who it is, so it may
+	if (ended_code_ != gdp::ErrorCode::kNone) {
+		// A reconnect racing the teardown: it proved who it is, so it may
 		// know why it can't have the session.
-		WLOG_INFO("gdp: connection #%llu authenticated after a console login ended the session",
-			(unsigned long long)peer->id);
-		peer->conn->close(static_cast<uint64_t>(gdp::ErrorCode::kEndedByLocalLogin));
+		WLOG_INFO("gdp: connection #%llu authenticated after the session was ended (%s)",
+			(unsigned long long)peer->id, gdp::describe_error_code(static_cast<uint64_t>(ended_code_)).c_str());
+		peer->conn->close(static_cast<uint64_t>(ended_code_));
 		remove_pending(peer);
 		return false;
 	}

@@ -31,11 +31,17 @@ constexpr int kTermGraceMs = 500;
 // its "unsaved changes" prompts and have them answered.
 constexpr int kLogoutGraceMs = 30'000;
 
-// The child-side half of every spawn here: own session, the spec's
-// environment, then /bin/sh -c. Never returns.
+// The child-side half of every spawn here: own session, no blocked
+// signals, the spec's environment, then /bin/sh -c. Never returns.
 [[noreturn]] void exec_in_child(const std::string &command,
 	const std::vector<std::pair<std::string, std::string>> &env) {
 	setsid();
+	// wraith blocks SIGTERM and SIGUSR1 to read them through signalfds
+	// (main()); a mask survives exec, and a desktop with SIGTERM blocked
+	// would ignore every attempt to stop it short of SIGKILL.
+	sigset_t none;
+	sigemptyset(&none);
+	sigprocmask(SIG_SETMASK, &none, nullptr);
 	for (const auto &[key, value] : env) {
 		setenv(key.c_str(), value.c_str(), 1);
 	}

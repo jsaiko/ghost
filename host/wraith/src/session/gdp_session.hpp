@@ -14,6 +14,7 @@
 #include "encode/encoder.hpp" // ColorMatrix
 #include "gdp/clipboard.hpp"
 #include "gdp/clock.hpp"
+#include "gdp/error_codes.hpp"
 #include "gdp/negotiation.hpp"
 #include "gdp/framing.hpp"
 #include "gdp/gamepad.hpp"
@@ -95,11 +96,12 @@ public:
 	int notify_fd() const;
 	void dispatch();
 
-	// The session is being ended because its user logged in at the
-	// console: closes the viewer with ENDED_BY_LOCAL_LOGIN now, before the
-	// logout finishes, and gives any later connection whose token checks
-	// out the same code instead of the desktop that is going away.
-	void end_for_local_login();
+	// The session is being ended -- its user logged in at the console
+	// (ENDED_BY_LOCAL_LOGIN), or wraith is being stopped (SESSION_ENDED):
+	// closes the viewer with `code` now, before the teardown finishes, and
+	// gives any later connection whose token checks out the same code
+	// instead of the desktop that is going away.
+	void end(gdp::ErrorCode code);
 
 	// True once SessionHello's token has been validated and SessionAccept
 	// sent. SessionServices only calls send_video_packet() while this is
@@ -348,8 +350,9 @@ private:
 	std::unique_ptr<Peer> active_;
 	std::vector<std::unique_ptr<Peer>> pending_;
 	uint64_t next_peer_id_ = 1;
-	// Set by end_for_local_login(); no connection becomes the viewer after.
-	bool ended_by_local_login_ = false;
+	// Set by end(), the code it closed with; no connection becomes the
+	// viewer after. kNone until then.
+	gdp::ErrorCode ended_code_ = gdp::ErrorCode::kNone;
 	gdp::SessionClock clock_;
 	// True once SessionAccept has gone out to active_: what gates every
 	// send, since active_ is already set during accept_session().
