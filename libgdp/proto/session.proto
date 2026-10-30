@@ -476,6 +476,15 @@ message StreamStats {
   // spread the path puts between them measures its slowest hop. Absent
   // from a spectre that doesn't measure it.
   repeated FrameTrain trains = 11;
+  // Forward error correction (gdp-spec.md §7.5, §9.7): the data slices of
+  // the frames finished in this window (delivered or given up on), how
+  // many of them never arrived -- before any recovery, so the host can size
+  // its parity -- and how many frames parity rebuilt. Frames none of whose
+  // datagrams arrived aren't counted. All 0 from a spectre that doesn't
+  // measure them.
+  uint64 slices_expected = 12;
+  uint64 slices_lost = 13;
+  uint32 fec_recovered_frames = 14;
 }
 
 message FrameTrain {

@@ -7,6 +7,7 @@
 #include "gdp/clock.hpp"
 #include "gdp/datagram.hpp"
 #include "gdp/error_codes.hpp"
+#include "gdp/fec.hpp"
 #include "gdp/file_transfer.hpp"
 #include "gdp/framing.hpp"
 #include "gdp/negotiation.hpp"
@@ -84,8 +85,9 @@ std::string machine_name() {
 // gdp_session.cpp), so what's in effect is exactly what works. "color" is
 // a promise this client keeps unconditionally: the presenter builds its
 // samplers from OutputDescriptor.color (VideoColor), whatever the matrix.
-const std::vector<std::string> kAlwaysOfferedCapabilities = {gdp::kCapabilityClipboard,
-	gdp::kCapabilityColor};
+// "fec" too: parity only ever replaces slices the reassembler lost.
+const std::vector<std::string> kAlwaysOfferedCapabilities = {gdp::kCapabilityClipboard, gdp::kCapabilityColor,
+	gdp::kCapabilityFec};
 
 // The one output spectre shows (see SessionClient::reassembler_).
 constexpr uint8_t kStreamId = 0;
@@ -462,6 +464,7 @@ bool SessionClient::handle_accept(const gdp::session::ControlEnvelope &env) {
 	// session (it's harmless: nothing here would act on it).
 	session.capabilities = gdp::negotiate_capabilities(offered_capabilities(),
 		std::vector<std::string>(accept.capabilities().begin(), accept.capabilities().end()));
+	fec_enabled_ = gdp::has_capability(session.capabilities, gdp::kCapabilityFec);
 	clipboard_enabled_ = gdp::has_capability(session.capabilities, gdp::kCapabilityClipboard);
 	clipboard_echo_.reset();
 	gamepad_enabled_ = gdp::has_capability(session.capabilities, gdp::kCapabilityGamepad);
@@ -557,6 +560,21 @@ void SessionClient::handle_datagram(const uint8_t *data, size_t len, uint64_t ar
 		}
 		return;
 	}
+	if (channel == gdp::DatagramChannel::kVideoParity) {
+		gdp::VideoParityHeader hdr;
+		const uint8_t *payload;
+		size_t payload_len;
+		if (!fec_enabled_ || !gdp::VideoParityHeader::decode(data, len, &hdr, &payload, &payload_len) ||
+			hdr.stream_id != kStreamId) {
+			return; // not negotiated, malformed or another output: dropped (§3.2)
+		}
+		receive_.bytes += len;
+		gdp::VideoFrameReassembler::Frame frame;
+		if (reassembler_.push_parity(hdr, payload, payload_len, &frame)) {
+			handle_video_frame(frame, 0);
+		}
+		return;
+	}
 	if (channel != gdp::DatagramChannel::kVideo) {
 		return; // anything else is dropped per gdp-spec.md §3.2
 	}
@@ -607,7 +625,11 @@ void SessionClient::handle_datagram(const uint8_t *data, size_t len, uint64_t ar
 	}
 	note_train(hdr.slice_count);
 	// Every slice carries the same value; this one's stands for the frame.
-	if (uint32_t host_us = hdr.host_latency_us()) {
+	handle_video_frame(frame, hdr.host_latency_us());
+}
+
+void SessionClient::handle_video_frame(const gdp::VideoFrameReassembler::Frame &frame, uint32_t host_us) {
+	if (host_us != 0) {
 		HostLatency &hl = host_latency_;
 		if (hl.samples == 0 || host_us < hl.min_us) {
 			hl.min_us = host_us;
@@ -1120,6 +1142,10 @@ SessionClient::LinkStats SessionClient::link_stats() const {
 	stats.delay_min_us = last_delay_min_us_;
 	stats.delay_avg_us = last_delay_avg_us_;
 	stats.delay_samples = last_delay_samples_;
+	stats.fec = fec_enabled_;
+	stats.fec_recovered = fec_recovered_total_.load(std::memory_order_relaxed);
+	stats.slices_expected = slices_expected_total_.load(std::memory_order_relaxed);
+	stats.slices_lost = slices_lost_total_.load(std::memory_order_relaxed);
 	return stats;
 }
 
@@ -1169,6 +1195,13 @@ void SessionClient::send_stats_report() {
 			stream_stats->set_delay_min_us(last_delay_min_us_);
 			stream_stats->set_delay_avg_us(last_delay_avg_us_);
 		}
+		gdp::VideoFrameReassembler::Stats fec = reassembler_.take_stats();
+		stream_stats->set_slices_expected(fec.slices_expected);
+		stream_stats->set_slices_lost(fec.slices_lost);
+		stream_stats->set_fec_recovered_frames(fec.frames_recovered);
+		fec_recovered_total_.fetch_add(fec.frames_recovered, std::memory_order_relaxed);
+		slices_expected_total_.fetch_add(fec.slices_expected, std::memory_order_relaxed);
+		slices_lost_total_.fetch_add(fec.slices_lost, std::memory_order_relaxed);
 		for (const TrainSample &sample : receive_.trains) {
 			gdp::session::FrameTrain *train = stream_stats->add_trains();
 			train->set_frame_id(sample.frame_id);

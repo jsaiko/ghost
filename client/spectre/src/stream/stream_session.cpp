@@ -3366,6 +3366,8 @@ void StreamSession::update_stats(uint64_t now_us) {
 	stats_sample_.rtt_ms = link.rtt_us / 1000.0;
 	stats_sample_.lost_recent = link.lost_recent;
 	stats_sample_.window_span = link.window_span;
+	stats_sample_.fec = link.fec;
+	stats_sample_.fec_recovered = link.fec_recovered;
 	// Re-read every window too: an AUTO session's host can reclassify.
 	stats_sample_.host_network_profile = client_.host_network_profile();
 	stats_sample_.via_gateway = client_.via_gateway();

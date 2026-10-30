@@ -367,6 +367,13 @@ public:
 		int32_t delay_min_us = 0;
 		int32_t delay_avg_us = 0;
 		uint32_t delay_samples = 0;
+		// "fec" is in effect, the frames parity has rebuilt this session, and
+		// the data slices of the frames finished and how many of them were
+		// lost before any recovery (all as of the last StatsReport).
+		bool fec = false;
+		uint64_t fec_recovered = 0;
+		uint64_t slices_expected = 0;
+		uint64_t slices_lost = 0;
 	};
 	LinkStats link_stats() const;
 
@@ -492,6 +499,13 @@ private:
 	// frames for any other stream are dropped, and everything below
 	// describes stream 0 alone.
 	gdp::VideoFrameReassembler reassembler_;
+	// "fec" in effect: parity datagrams (gdp-spec.md §9.7) go to
+	// reassembler_ too. fec_recovered_total_ adds up its frames_recovered,
+	// for link_stats(), as the other two do its slice counts.
+	bool fec_enabled_ = false;
+	std::atomic<uint64_t> fec_recovered_total_{0};
+	std::atomic<uint64_t> slices_expected_total_{0};
+	std::atomic<uint64_t> slices_lost_total_{0};
 
 	// Sliding ack/loss window (gdp-spec.md §7.5's StatsReport): bit i of
 	// completed_mask is set if frame_id (highest_frame_id - i) was fully
@@ -570,6 +584,9 @@ private:
 	// A frame just completed: keeps train_'s timing of it as a
 	// StreamStats.trains sample if it was large and clean enough.
 	void note_train(uint32_t slice_count);
+	// A frame the reassembler completed, from its slices or rebuilt from
+	// parity, to the decoder. `host_us`: its host latency, 0 unreported.
+	void handle_video_frame(const gdp::VideoFrameReassembler::Frame &frame, uint32_t host_us);
 };
 
 } // namespace spectre

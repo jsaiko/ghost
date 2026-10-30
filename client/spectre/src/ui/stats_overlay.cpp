@@ -93,7 +93,8 @@ void build_stats_overlay(UiDrawList &out, const UiFont &font, const StatsSample 
 		"rtt " + fmt("%.1f", sample.rtt_ms) + " ms   loss " + std::to_string(sample.lost_recent) + "/" +
 			std::to_string(std::max<uint32_t>(sample.window_span, 1)) + "   video " +
 			fmt("%.1f", sample.video_mbps) + " Mb/s",
-		describe_network_profile(sample) + "   connection " + (sample.via_gateway ? "proxied" : "direct"),
+		describe_network_profile(sample) + "   connection " + (sample.via_gateway ? "proxied" : "direct") +
+			(sample.fec ? "   fec " + std::to_string(sample.fec_recovered) + " recovered" : ""),
 	};
 	if (sample.host_avg_ms > 0.0) { // a host that reports it
 		lines.insert(lines.begin() + 3,

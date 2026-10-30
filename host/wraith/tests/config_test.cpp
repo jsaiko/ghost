@@ -60,7 +60,7 @@ void test_shipped_file_is_the_defaults() {
 void test_values_apply() {
 	wraith::ConfigLoad load = wraith::load_config(write_file("set.toml",
 		"[log]\nlevel = \"debug\"\n[network]\ncongestion_control = \"bbr\"\nrate_trace = true\n"
-		"pacing_multiplier = 4\npacing_floor_mbps = 900\n"
+		"pacing_multiplier = 4\npacing_floor_mbps = 900\nfec = \"fixed\"\nfec_percent = 35\n"
 		"[encode]\ngop = 300\nmax_bitrate_mbps = 45\nforce_software = true\nnvenc_zero_copy = false\n"
 		"bit_depth = 8\npyrowave_bpp = 0.75\nmax_fps = 120\n"
 		"[encode.codecs]\nav1 = true\nh264 = false\npyrowave = true\n"
@@ -73,6 +73,8 @@ void test_values_apply() {
 	CHECK(c.network.rate_trace);
 	CHECK(c.network.pacing_multiplier == 4);
 	CHECK(c.network.pacing_floor_mbps == 900);
+	CHECK(c.network.fec == "fixed");
+	CHECK(c.network.fec_percent == 35);
 	CHECK(c.refine.burst_ms == 200);
 	CHECK(!c.display.client_scale);
 	CHECK(c.refine.settle_ms == 120);
@@ -99,6 +101,8 @@ void test_bad_files_are_rejected_whole() {
 		"[refine]\nsettle_ms = 50\nburst_ms = 1\n",       // out of range
 		"[network]\ncongestion_control = \"reno\"\n",     // not a choice
 		"[network]\npacing_floor_mbps = 0\n",             // out of range
+		"[network]\nfec = \"on\"\n",                      // not a choice
+		"[network]\nfec_percent = 0\n",                   // out of range
 		"[encode]\ngop = -1\n",                           // out of range
 		"[encode]\nmax_bitrate_mbps = 0\n",               // out of range
 		"[refine\nsettle_ms = 50\n",                      // doesn't parse

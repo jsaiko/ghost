@@ -210,7 +210,7 @@ run_one() {
 	wait "$wraith_pid" 2>/dev/null || true
 	wraith_pid=
 	echo "--- wraith:"
-	grep -E 'gdp: (network profile|bitrate|queuing|video slices|QUIC|pacing)' "$work/wraith-$p.log" | sed 's/^/  /' | tail -25 || true
+	grep -E 'gdp: (network profile|bitrate|queuing|video slices|QUIC|pacing|fec)' "$work/wraith-$p.log" | sed 's/^/  /' | tail -25 || true
 	if [[ -n ${TRACE:-} ]]; then
 		echo "--- wraith rate trace:"
 		grep -E 'gdp: rate ' "$work/wraith-$p.log" | sed 's/^.*gdp: rate /  /' || true

@@ -153,9 +153,11 @@ static VideoFrameReassembler::Frame slice_and_reassemble(VideoFrameReassembler &
 	const std::vector<uint8_t> &frame, std::vector<size_t> order = {},
 	size_t max_payload = kFallbackDatagramPayload) {
 	std::vector<std::vector<uint8_t>> datagrams;
+	// A new frame each call: a frame_id already delivered is ignored.
+	static uint32_t next_frame_id = 99;
 	VideoDatagramHeader proto;
 	proto.stream_id = 7;
-	proto.frame_id = 99;
+	proto.frame_id = next_frame_id++;
 	proto.flags = VideoDatagramHeader::kFlagKeyframe;
 	proto.pts = 5000;
 	bool ok =
@@ -187,7 +189,8 @@ static VideoFrameReassembler::Frame slice_and_reassemble(VideoFrameReassembler &
 		if (reassembler.push(hdr, payload, payload_len, &out)) completed++;
 	}
 	assert(completed == 1);
-	assert(out.stream_id == 7 && out.frame_id == 99 && out.keyframe && out.pts == 5000);
+	assert(out.stream_id == 7 && out.frame_id == proto.frame_id && out.keyframe && out.pts == 5000);
+	assert(!out.recovered);
 	return out;
 }
 
@@ -242,29 +245,73 @@ static void test_reassembler_discards_incomplete_and_duplicates() {
 	uint8_t payload[4] = {1, 2, 3, 4};
 
 	// Slice 0 of frame 1 (a 2-slice frame) arrives, then frame 2 starts:
-	// frame 1 is abandoned, and frame 2's remaining slice completes it.
+	// both stay in progress, so frame 1's late slice 1 still completes it.
 	VideoDatagramHeader hdr;
+	hdr.stream_id = 9;
 	hdr.frame_id = 1;
 	hdr.slice_idx = 0;
 	hdr.slice_count = 2;
 	assert(!reassembler.push(hdr, payload, 4, &out));
 	hdr.frame_id = 2;
 	assert(!reassembler.push(hdr, payload, 4, &out));
-	// Frame 1's late slice 1 must not complete anything (it's a new frame_id
-	// again as far as the reassembler is concerned, and incomplete).
 	hdr.frame_id = 1;
 	hdr.slice_idx = 1;
+	assert(reassembler.push(hdr, payload, 4, &out));
+	assert(out.frame_id == 1 && out.data.size() == 8);
+	// A duplicate of a delivered frame's slice starts nothing.
 	assert(!reassembler.push(hdr, payload, 4, &out));
-	// Back to frame 2: its slice 0 is gone now (frame 1 evicted it), so
-	// slice 1 alone can't complete it either -- resend both.
+
+	// Frame 2 is still in progress: a duplicate is ignored, not
+	// double-counted, and its other slice completes it.
 	hdr.frame_id = 2;
-	hdr.slice_idx = 1;
-	assert(!reassembler.push(hdr, payload, 4, &out));
-	hdr.slice_idx = 1; // duplicate: ignored, not double-counted
-	assert(!reassembler.push(hdr, payload, 4, &out));
 	hdr.slice_idx = 0;
+	assert(!reassembler.push(hdr, payload, 4, &out));
+	hdr.slice_idx = 1;
 	assert(reassembler.push(hdr, payload, 4, &out));
 	assert(out.frame_id == 2 && out.data.size() == 8);
+
+	// Frames are delivered in order: frame 5 completing gives up on frame
+	// 4, whose late slice then starts nothing.
+	hdr.frame_id = 4;
+	hdr.slice_idx = 0;
+	assert(!reassembler.push(hdr, payload, 4, &out));
+	hdr.frame_id = 5;
+	assert(!reassembler.push(hdr, payload, 4, &out));
+	hdr.slice_idx = 1;
+	assert(reassembler.push(hdr, payload, 4, &out));
+	assert(out.frame_id == 5);
+	hdr.frame_id = 4;
+	assert(!reassembler.push(hdr, payload, 4, &out));
+
+	// At most kMaxFramesInProgress at once: the oldest goes first.
+	for (uint32_t id = 10; id < 10 + VideoFrameReassembler::kMaxFramesInProgress + 1; id++) {
+		hdr.frame_id = id;
+		hdr.slice_idx = 0;
+		assert(!reassembler.push(hdr, payload, 4, &out));
+	}
+	hdr.frame_id = 10;
+	hdr.slice_idx = 1;
+	assert(!reassembler.push(hdr, payload, 4, &out)); // evicted
+	hdr.frame_id = 11;
+	assert(reassembler.push(hdr, payload, 4, &out));
+
+	// Every finished frame's slices were counted, the lost ones too: 1, 2,
+	// 4 (one of two lost), 5, 10 (evicted, one lost), 11 -- and 12 and 13,
+	// still in progress, not yet.
+	VideoFrameReassembler::Stats stats = reassembler.take_stats();
+	assert(stats.slices_expected == 12 && stats.slices_lost == 2 && stats.frames_recovered == 0);
+	assert(reassembler.take_stats().slices_expected == 0);
+
+	// A frame_id a little behind the last delivered is late; one far
+	// behind isn't, but a sender that started over.
+	hdr.slice_count = 1;
+	hdr.slice_idx = 0;
+	hdr.frame_id = 0;
+	assert(!reassembler.push(hdr, payload, 4, &out));
+	hdr.frame_id = 11 - VideoFrameReassembler::kMaxFrameAge - 1;
+	assert(reassembler.push(hdr, payload, 4, &out));
+	assert(out.frame_id == hdr.frame_id);
+	hdr.slice_count = 2;
 
 	// Streams are independent: a frame on stream 1 doesn't disturb stream 0.
 	hdr.stream_id = 0;

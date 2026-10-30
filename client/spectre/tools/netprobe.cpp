@@ -153,7 +153,7 @@ int main(int argc, char *argv[]) {
 		accepted = true;
 		printf("netprobe: accepted, %s via %s, %ux%u\n", session.codec.c_str(), session.encoder.c_str(),
 			display.width, display.height);
-		printf("  t   fps  key   Mbps   rtt_ms  queue_ms(avg)  lost/64\n");
+		printf("  t   fps  key   Mbps   rtt_ms  queue_ms(avg)  lost/64  slices_lost  fec\n");
 	};
 	client.on_disconnected = [&](const std::string &reason) {
 		done = true;
@@ -183,6 +183,8 @@ int main(int argc, char *argv[]) {
 	uint64_t next_report = start + 250'000;
 	uint64_t next_print = 0;
 	uint64_t last_frames = 0, last_keyframes = 0, last_bytes = 0;
+	uint64_t last_slices_lost = 0, last_slices_expected = 0, last_fec_recovered = 0;
+	bool fec_enabled = false;
 	int32_t delay_floor = INT32_MAX;
 	std::vector<double> fps_samples, mbps_samples, queue_samples, rtt_samples;
 	int tick = 0;
@@ -221,9 +223,17 @@ int main(int argc, char *argv[]) {
 			double queue = link.delay_samples > 0 && delay_floor != INT32_MAX
 				? (link.delay_avg_us - delay_floor) / 1000.0
 				: 0;
-			printf("%3d  %4.0f  %3llu  %6.2f  %7.1f  %13.1f  %4u/%u\n", tick, fps,
+			// Slice loss before FEC, and the frames it rebuilt, over the
+			// second (cumulative counts from the StatsReports sent in it).
+			printf("%3d  %4.0f  %3llu  %6.2f  %7.1f  %13.1f  %4u/%-2u  %5llu/%-5llu  %3llu\n", tick, fps,
 				(unsigned long long)(keyframes - last_keyframes), mbps, link.rtt_us / 1000.0, queue,
-				link.lost_recent, link.window_span);
+				link.lost_recent, link.window_span, (unsigned long long)(link.slices_lost - last_slices_lost),
+				(unsigned long long)(link.slices_expected - last_slices_expected),
+				(unsigned long long)(link.fec_recovered - last_fec_recovered));
+			last_slices_lost = link.slices_lost;
+			last_slices_expected = link.slices_expected;
+			last_fec_recovered = link.fec_recovered;
+			fec_enabled = link.fec;
 			fflush(stdout);
 			fps_samples.push_back(fps);
 			mbps_samples.push_back(mbps);
@@ -260,6 +270,10 @@ int main(int argc, char *argv[]) {
 		   "queuing delay p50 %.1f / p95 %.1f / max %.1f ms, rtt p50 %.1f ms\n",
 		fps_samples.size(), fps_avg, mbps_avg, (unsigned long long)keyframes, percentile(queue_samples, 50),
 		percentile(queue_samples, 95), percentile(queue_samples, 100), percentile(rtt_samples, 50));
+	printf("slices: %llu of %llu lost before recovery (%.2f%%), fec %s, %llu frames recovered\n",
+		(unsigned long long)last_slices_lost, (unsigned long long)last_slices_expected,
+		last_slices_expected ? 100.0 * (double)last_slices_lost / (double)last_slices_expected : 0.0,
+		fec_enabled ? "on" : "off", (unsigned long long)last_fec_recovered);
 	if (!frame_gaps.empty()) {
 		double median = percentile(frame_gaps, 50);
 		size_t late = 0;

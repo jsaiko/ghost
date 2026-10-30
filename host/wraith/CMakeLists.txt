@@ -169,6 +169,7 @@ add_executable(wraith
   src/session/report_cli.cpp
   src/session/report_server.cpp
   src/session/rate_controller.cpp
+  src/session/fec_controller.cpp
   src/session/path_rate_estimator.cpp
   src/session/leader_host.cpp
   src/session/clipboard_sync.cpp
@@ -388,6 +389,13 @@ target_include_directories(wraith_rate_controller_test PRIVATE src)
 target_link_libraries(wraith_rate_controller_test PRIVATE gdp)
 target_compile_options(wraith_rate_controller_test PRIVATE -Wall -Wextra -Wno-unused-parameter)
 add_test(NAME wraith_rate_controller_test COMMAND wraith_rate_controller_test)
+
+# The parity policy (session/fec_controller.hpp) against synthetic reports.
+add_executable(wraith_fec_controller_test tests/fec_controller_test.cpp src/session/fec_controller.cpp)
+target_include_directories(wraith_fec_controller_test PRIVATE src)
+target_link_libraries(wraith_fec_controller_test PRIVATE gdp)
+target_compile_options(wraith_fec_controller_test PRIVATE -Wall -Wextra -Wno-unused-parameter)
+add_test(NAME wraith_fec_controller_test COMMAND wraith_fec_controller_test)
 
 # The path rate estimator (session/path_rate_estimator.hpp) against
 # synthetic frame trains.

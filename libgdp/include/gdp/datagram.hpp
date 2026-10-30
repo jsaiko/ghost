@@ -33,7 +33,8 @@ inline constexpr size_t kMaxSlicePayload = 1500;
 enum class DatagramChannel : uint8_t {
 	kVideo = 0x01,
 	kAudio = 0x02,
-	kMicrophone = 0x03, // client -> host, laid out as kAudio (capability "microphone")
+	kMicrophone = 0x03,  // client -> host, laid out as kAudio (capability "microphone")
+	kVideoParity = 0x04, // host -> client, VideoParityHeader (capability "fec")
 };
 
 // Byte 0 of every QUIC DATAGRAM frame on a session connection. Returns
@@ -98,6 +99,62 @@ size_t slice_payload_for(size_t max_datagram_size);
 // point sending the rest).
 bool slice_video_frame(VideoDatagramHeader hdr, const uint8_t *data, size_t len, size_t max_payload,
 	const std::function<bool(const uint8_t *datagram, size_t datagram_len)> &send);
+
+// --- Forward error correction (gdp-spec.md §9.7, capability "fec") ---
+//
+// A frame's n data slices are dealt round-robin into fec_block_count(n)
+// blocks -- slice i is data shard i / blocks of block i % blocks -- so a
+// burst of consecutive losses spreads over every block. Each block is a
+// Reed-Solomon code of its own (gdp/fec.hpp) with up to kFecMaxBlockData
+// data shards; a shard is one slice's payload, the short last slice
+// zero-padded to the others' length.
+inline constexpr size_t kFecMaxBlockData = 64;
+inline constexpr size_t kFecMaxBlocks = 255;
+// Data plus parity shards in one block: GF(2^8) has 256 elements, and the
+// Cauchy construction needs a distinct one per shard.
+inline constexpr size_t kFecMaxBlockShards = 255;
+
+// Blocks for a frame of `slices` data slices; 0 when it has none or too
+// many to protect (more than kFecMaxBlocks * kFecMaxBlockData), which goes
+// without parity.
+size_t fec_block_count(size_t slices);
+// Data shards in block `block` of `blocks`.
+inline size_t fec_block_data(size_t slices, size_t blocks, size_t block) {
+	return slices / blocks + (block < slices % blocks ? 1 : 0);
+}
+
+struct VideoParityHeader {
+	static constexpr size_t kSize = 19;
+
+	uint8_t stream_id = 0;
+	uint32_t frame_id = 0;
+	uint8_t block_idx = 0;
+	uint8_t block_count = 1;
+	uint8_t data_shards = 1; // in this block
+	uint8_t parity_idx = 0;
+	uint8_t parity_count = 1; // in this block
+	// The frame's own VideoDatagramHeader flags and pts, so a frame whose
+	// data slices were all lost can still be rebuilt from parity alone.
+	uint8_t flags = 0;
+	uint32_t pts = 0;
+	// The frame's payload length: the only way to know the last slice's
+	// length when that slice is the one recovered.
+	uint32_t frame_len = 0;
+
+	// Writes DatagramChannel::kVideoParity + this header (1 + kSize bytes).
+	void encode(uint8_t *out) const;
+
+	// Parses a full datagram; rejects indices outside their counts, an
+	// empty payload and a block of more than kFecMaxBlockShards shards.
+	// Whether the header agrees with the frame's layout is the
+	// reassembler's to check.
+	static bool decode(const uint8_t *data, size_t len, VideoParityHeader *out, const uint8_t **payload,
+		size_t *payload_len);
+};
+
+// Slice payload for a session with "fec" in effect: the parity datagram's
+// longer header has to fit too, and parity shards are exactly a slice long.
+size_t fec_slice_payload_for(size_t max_datagram_size);
 
 struct AudioDatagramHeader {
 	static constexpr size_t kSize = 6;
