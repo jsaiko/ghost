@@ -23,6 +23,7 @@ std::optional<DatagramChannel> peek_channel(const uint8_t *data, size_t len) {
 	case static_cast<uint8_t>(DatagramChannel::kVideo): return DatagramChannel::kVideo;
 	case static_cast<uint8_t>(DatagramChannel::kAudio): return DatagramChannel::kAudio;
 	case static_cast<uint8_t>(DatagramChannel::kMicrophone): return DatagramChannel::kMicrophone;
+	case static_cast<uint8_t>(DatagramChannel::kVideoParity): return DatagramChannel::kVideoParity;
 	default: return std::nullopt;
 	}
 }
@@ -103,6 +104,62 @@ bool slice_video_frame(VideoDatagramHeader hdr, const uint8_t *data, size_t len,
 		}
 	}
 	return true;
+}
+
+size_t fec_block_count(size_t slices) {
+	if (slices == 0) {
+		return 0;
+	}
+	size_t blocks = (slices + kFecMaxBlockData - 1) / kFecMaxBlockData;
+	return blocks > kFecMaxBlocks ? 0 : blocks;
+}
+
+void VideoParityHeader::encode(uint8_t *out) const {
+	out[0] = static_cast<uint8_t>(DatagramChannel::kVideoParity);
+	out[1] = stream_id;
+	put_u32(out + 2, frame_id);
+	out[6] = block_idx;
+	out[7] = block_count;
+	out[8] = data_shards;
+	out[9] = parity_idx;
+	out[10] = parity_count;
+	out[11] = flags;
+	put_u32(out + 12, pts);
+	put_u32(out + 16, frame_len);
+}
+
+bool VideoParityHeader::decode(const uint8_t *data, size_t len, VideoParityHeader *out,
+	const uint8_t **payload, size_t *payload_len) {
+	if (len < 1 + kSize + 1 || data[0] != static_cast<uint8_t>(DatagramChannel::kVideoParity)) {
+		return false;
+	}
+	out->stream_id = data[1];
+	out->frame_id = get_u32(data + 2);
+	out->block_idx = data[6];
+	out->block_count = data[7];
+	out->data_shards = data[8];
+	out->parity_idx = data[9];
+	out->parity_count = data[10];
+	out->flags = data[11];
+	out->pts = get_u32(data + 12);
+	out->frame_len = get_u32(data + 16);
+	if (out->block_count == 0 || out->block_idx >= out->block_count || out->data_shards == 0 ||
+		out->parity_count == 0 || out->parity_idx >= out->parity_count ||
+		(size_t)out->data_shards + out->parity_count > kFecMaxBlockShards) {
+		return false;
+	}
+	*payload = data + 1 + kSize;
+	*payload_len = len - 1 - kSize;
+	return true;
+}
+
+size_t fec_slice_payload_for(size_t max_datagram_size) {
+	constexpr size_t kOverhead = 1 + VideoParityHeader::kSize;
+	if (max_datagram_size <= kOverhead) {
+		return kFallbackDatagramPayload;
+	}
+	size_t payload = max_datagram_size - kOverhead;
+	return payload < kMaxSlicePayload ? payload : kMaxSlicePayload;
 }
 
 void AudioDatagramHeader::encode(uint8_t *out, DatagramChannel channel) const {

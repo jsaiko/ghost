@@ -21,16 +21,17 @@ how many bits to spend. The wire format is gdp-spec.md §2 (transport),
   `ALREADY_CONNECTED`, unless its hello asks to take over; then the old
   viewer is closed with `TAKEN_OVER`.
 - `SessionHello` / `SessionAccept` negotiate the codec, the capabilities
-  (`clipboard`, `refine`, `gamepad`, `microphone`), the output size and
-  the network profile. The codec is the first of the client's
+  (`clipboard`, `refine`, `fec`, `gamepad`, `microphone`, ...), the
+  output size and the network profile. The codec is the first of the client's
   preferences that wraith can actually open, which it finds by trying.
   wraith decides its capabilities per session
   (`GdpSession::supported_capabilities()`).
 - Video is sliced to the largest datagram the connection currently
   allows (`gdp::Connection::max_datagram_size()`). That follows QUIC's
   path MTU discovery: a little under QUIC's 1200-byte minimum at
-  connect, 1432 once a 1500-byte path is confirmed. Audio datagrams are
-  sent ahead of any queued video.
+  connect, 1432 once a 1500-byte path is confirmed (1412 bytes of slice
+  then, or 1415 without `fec`). Audio datagrams are sent ahead of any
+  queued video.
 
 ## Rate control
 
@@ -92,10 +93,11 @@ frame carried.
 A lost frame (or one spectre discarded) corrupts every frame that
 references it, so it gets a keyframe, unless one already sent or
 requested comes after it, and no sooner than the profile's repair
-interval after the previous repair. Every loss costs a keyframe: there
-is no FEC, intra refresh or reference invalidation. Lossless
-refinement's layer is repaired separately and at once
-([refinement](refinement.md#loss)).
+interval after the previous repair. A frame parity rebuilt
+([below](#forward-error-correction)) isn't lost; one it couldn't save
+costs a keyframe, since there is no intra refresh or reference
+invalidation. Lossless refinement's layer is repaired separately and at
+once ([refinement](refinement.md#loss)).
 
 A keyframe request also has the host re-encode the current picture,
 since a still desktop produces no next frame to carry it.
@@ -108,6 +110,59 @@ decoder for about 100 ms, a visible stutter every 4-5 s at 120-144 fps
 with the old 600-frame GOP. H.264, H.265 and AV1 streams decode without
 error past their 8-bit frame_num / POC / order-hint wrap, which a long or
 infinite GOP crosses every 256 frames.
+
+## Forward error correction
+
+With `fec` in effect (gdp-spec.md §9.7, ADR 0018), each frame's data
+slices are followed by Reed-Solomon parity on datagram channel 0x04, from
+which spectre rebuilds lost slices itself. A frame is dealt round-robin
+into blocks of at most 64 slices, so a burst of losses spreads over all
+of them, and each block gets its own parity shards: any *k* of a block's
+shards rebuild its *k* data slices. Parity goes out after the data, so a
+frame that arrives whole is decoded without waiting for it. The code is
+libgdp's (`gdp/fec.hpp`, AVX2, SSSE3 or NEON): a 1 MB frame's 20% parity
+takes about 0.6 ms with AVX2.
+
+**How much.** `FecController` sizes parity from the slice loss spectre
+reports before recovery (`StreamStats.slices_lost` over
+`slices_expected`), each block getting that fraction of its slices,
+rounded up:
+
+- a floor per profile: none on `lan`, 5% on `internet`, 15% on `mobile`;
+- above it, three times the reported loss plus 2%, taken as soon as a
+  report shows it, released by a tenth per report; loss under 0.2% is
+  ignored;
+- 5% more for each report with a frame parity didn't save, fading by a
+  tenth per clean one;
+- keyframes 1.5 times as much; never more than 50%.
+
+`[network] fec` in wraith.toml turns it off or fixes the fraction
+([configuration](../reference/configuration.md)).
+
+**Bitrate.** The rate controller's target covers data and parity
+together: the transport's sent bytes, which it judges against, include
+both. The encoder gets the target divided by one plus the parity
+overhead measured over the last report (never less than the fraction
+asked for), so a busy stream's parity doesn't push it past the target.
+Small frames cost relatively more, since every protected block gets at
+least one shard; the measurement ignores a nearly idle window, whose few
+tiny frames say nothing about a busy one.
+
+**Reassembly.** spectre keeps up to three frames in progress and
+completes them in `frame_id` order, so parity for one frame arriving
+after the next frame's first slice still counts; completing a frame
+gives up on any older one. The statistics overlay shows how many frames
+parity has rebuilt, and `spectre_netprobe` prints the slice loss before
+recovery and the recoveries every second.
+
+Measured on the netem harness, 30 s per run, auto profile, BBR:
+
+| Profile | Mbps (off → on) | Keyframes | p99 frame gap |
+|---|---|---|---|
+| `lan` | 32.9 → 32.9 (no parity sent) | 1 → 1 | 23 → 21 ms |
+| `broadband` | 10.3 → 16.8 | 27 → 2 | 64 → 28 ms |
+| `wifi` | 3.0 → 3.6 | 26 → 5 | 113 → 34 ms |
+| `mobile` | 1.2 → 1.6 | 15 → 2 | 170 → 87 ms |
 
 ## Congestion control
 
@@ -151,14 +206,16 @@ the fixed rate.
 
 `client/spectre/tools/netem-harness` runs a real wraith against
 `spectre_netprobe` (a headless client that decodes nothing and prints
-arrival statistics) across a veth into a network namespace, shaped by
+arrival statistics, slice loss and FEC recoveries included) across a veth into a network namespace, shaped by
 netem per profile (`lan`, `broadband`, `wifi`, `bufferbloat`, `mobile`,
 `uplink20`, `uplink50`). wraith.toml's `network.rate_trace` logs every
 report's measurements and target.
 
 ## Limitations
 
-- Every lost frame costs a keyframe; on a link with random loss, that
-  repair traffic, not capacity, limits the bitrate.
+- A frame parity can't save (a burst longer than its blocks' parity, or
+  loss before the controller has raised the fraction) still costs a
+  keyframe. The browser client doesn't offer `fec` yet, so on it every
+  lost frame does.
 - One congestion controller per host, fixed at accept time.
 - One output and one viewer per session.

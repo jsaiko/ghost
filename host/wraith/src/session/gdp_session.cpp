@@ -12,6 +12,7 @@
 #include "gdp/clipboard.hpp"
 #include "gdp/datagram.hpp"
 #include "gdp/error_codes.hpp"
+#include "gdp/fec.hpp"
 #include "gdp/file_transfer.hpp"
 #include "gdp/framing.hpp"
 #include "gdp/negotiation.hpp"
@@ -259,6 +260,7 @@ void GdpSession::reset_session(uint64_t error_code) {
 	capabilities_.clear();
 	clipboard_echo_.reset();
 	rate_.reset();
+	fec_.reset();
 }
 
 void GdpSession::end(gdp::ErrorCode code) {
@@ -843,7 +845,17 @@ bool GdpSession::accept_session(const gdp::session::SessionHello &hello) {
 		handshake_rtt_us, gdp::monotonic_us());
 	path_rate_ = PathRateEstimator{}; // a new client is a new path
 	logged_pacing_bps_ = 0;
-	services.set_bitrate(rate_->target_bps());
+	fec_.reset();
+	if (gdp::has_capability(capabilities_, gdp::kCapabilityFec)) {
+		const auto &network = config().network;
+		auto mode = network.fec == "fixed" ? FecController::Mode::kFixed : FecController::Mode::kAuto;
+		fec_ = std::make_unique<FecController>(mode, network.fec_percent / 100.0);
+		fec_->on_report(rate_->params().kind, 0, 0, false); // the profile's floor
+		logged_fec_ratio_ = fec_->ratio();
+		WLOG_INFO("gdp: fec %s, parity %.0f%% to start (%s)", network.fec.c_str(), fec_->ratio() * 100.0,
+			gdp::fec_implementation());
+	}
+	apply_bitrate(0, true);
 	services.set_link_profile(link_profile_of(rate_->params().kind));
 	apply_pacing();
 	WLOG_INFO(
@@ -924,6 +936,10 @@ std::string GdpSession::status_text() const {
 		const SessionServices &services = host_.session();
 		text += "session codec: " + video_codec_ + "\n";
 		text += "capabilities: " + join(capabilities_) + "\n";
+		if (fec_) {
+			text += "fec parity: " + std::to_string((int)std::lround(fec_->ratio() * 100.0)) + "% (" +
+				gdp::fec_implementation() + ")\n";
+		}
 		text += "encoder: " + services.encoder_name() + "\n";
 		text += "output: " + std::to_string(host_.output_width()) + "x" +
 			std::to_string(host_.output_height()) + "\n";
@@ -944,6 +960,9 @@ bool GdpSession::request_client_diagnostics(std::function<void(std::string)> don
 
 std::vector<std::string> GdpSession::supported_capabilities() const {
 	std::vector<std::string> supported = kSupportedCapabilities;
+	if (config().network.fec != "off") {
+		supported.push_back(gdp::kCapabilityFec);
+	}
 	// clipboard_available(), not clipboard(): a screencast host's sink
 	// only exists once the captured compositor is up, seconds after the
 	// first client attaches, and a capability missed at SessionAccept can
@@ -1351,6 +1370,17 @@ void GdpSession::handle_stream_stats(uint32_t rtt_us, const gdp::session::Stream
 	const char *profile_before = rate_->params().name;
 	uint32_t before = rate_->target_bps();
 	bool changed = rate_->on_sample(sample);
+	if (fec_) {
+		fec_->on_report(rate_->params().kind, stats.slices_expected(), stats.slices_lost(), new_loss != 0);
+		double ratio = fec_->ratio();
+		if ((ratio == 0.0) != (logged_fec_ratio_ == 0.0) || std::abs(ratio - logged_fec_ratio_) >= 0.05) {
+			WLOG_INFO("gdp: fec parity %.0f%% -> %.0f%% (slices lost %llu/%llu before recovery, %u frames "
+					  "recovered)",
+				logged_fec_ratio_ * 100.0, ratio * 100.0, (unsigned long long)stats.slices_lost(),
+				(unsigned long long)stats.slices_expected(), stats.fec_recovered_frames());
+			logged_fec_ratio_ = ratio;
+		}
+	}
 	if (rate_trace_) {
 		uint64_t dt_us = std::max<uint64_t>(1, sample.interval_us);
 		WLOG_INFO(
@@ -1362,9 +1392,15 @@ void GdpSession::handle_stream_stats(uint32_t rtt_us, const gdp::session::Stream
 			(unsigned long long)sample.lost_datagrams,
 			(unsigned long long)(sample.lost_datagrams + sample.acked_datagrams), skipped,
 			sample.rtt_us / 1000.0, *rate_->last_reason() ? ", " : "", rate_->last_reason());
+		if (fec_) {
+			WLOG_INFO(
+				"gdp: rate fec parity %.0f%%, slices lost %llu/%llu before recovery, %u frames recovered",
+				fec_->ratio() * 100.0, (unsigned long long)stats.slices_lost(),
+				(unsigned long long)stats.slices_expected(), stats.fec_recovered_frames());
+		}
 	}
+	apply_bitrate(stats.interval_us(), changed);
 	if (changed) {
-		services.set_bitrate(rate_->target_bps());
 		apply_pacing();
 		// Climbing happens every clean report; only cuts are worth a line.
 		if (rate_->target_bps() < before) {
@@ -1477,6 +1513,19 @@ void GdpSession::service_owed_keyframe() {
 	last_repair_us_ = now;
 	repair_owed_ = false;
 	request_keyframe(/*repair=*/true);
+}
+
+void GdpSession::apply_bitrate(uint64_t interval_us, bool force) {
+	uint32_t target = rate_->target_bps();
+	uint32_t encoder = fec_ ? fec_->encoder_bps(target, interval_us) : target;
+	// The share moves a little with every report's measured overhead;
+	// only a real move is worth reconfiguring the encoder for.
+	if (!force && encoder_bps_ != 0 && (uint64_t)encoder * 50 > (uint64_t)encoder_bps_ * 49 &&
+		(uint64_t)encoder * 50 < (uint64_t)encoder_bps_ * 51) {
+		return;
+	}
+	encoder_bps_ = encoder;
+	host_.session().set_bitrate(encoder);
 }
 
 void GdpSession::apply_pacing() {
@@ -1713,15 +1762,23 @@ void GdpSession::send_video_packet(bool keyframe, const uint8_t *data, size_t le
 	// covers the moment before it's known). Every slice of one frame uses
 	// the same size.
 	uint16_t max_datagram = active_->conn->max_datagram_size();
-	size_t payload = gdp::slice_payload_for(max_datagram);
+	size_t payload = fec_ ? gdp::fec_slice_payload_for(max_datagram) : gdp::slice_payload_for(max_datagram);
 	if (payload != slice_payload_) {
 		WLOG_INFO("gdp: video slices now %zu bytes (max datagram %u, path MTU %u)", payload, max_datagram,
 			active_->conn->path_mtu());
 		slice_payload_ = payload;
 	}
-	gdp::slice_video_frame(hdr, data, len, payload, [this](const uint8_t *datagram, size_t datagram_len) {
+	auto send = [this](const uint8_t *datagram, size_t datagram_len) {
 		return active_->conn->send_datagram(datagram, datagram_len);
-	});
+	};
+	if (!gdp::slice_video_frame(hdr, data, len, payload, send) || !fec_) {
+		return;
+	}
+	// Parity right behind the data (gdp-spec.md §9.7): a frame that all
+	// arrives is decoded without waiting for it.
+	auto parity_for = [this, keyframe](size_t k) { return fec_->parity_for(k, keyframe); };
+	size_t parity = gdp::send_video_parity(hdr, data, len, payload, parity_for, send, &fec_scratch_);
+	fec_->on_sent(len, parity);
 }
 
 void GdpSession::send_audio_packet(const uint8_t *data, size_t len) {

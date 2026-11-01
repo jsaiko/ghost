@@ -308,6 +308,7 @@ channel tag:
 | 0x01 | host → client | Video (§9). |
 | 0x02 | host → client | Audio (§10). |
 | 0x03 | client → host | Microphone (§10.1), only under the capability `microphone`. |
+| 0x04 | host → client | Video parity (§9.7), only under the capability `fec`. |
 
 A receiver MUST silently drop a datagram that is empty, carries a channel
 it does not recognize or did not negotiate, or is too short for its
@@ -951,6 +952,7 @@ capability is still right.
 | `clipboard` | defined | §7.9 |
 | `color` | defined | §7.3 |
 | `refine` | defined | §7.8, §9.5 |
+| `fec` | defined | §9.7, datagram channel 0x04 (§3.2) |
 | `gamepad` | defined | §8.5 |
 | `hid` | defined | §8.6 |
 | `microphone` | defined | §6.8, §10.1 |
@@ -1278,6 +1280,9 @@ basis of its rate control.
 | 9 | `delay_avg_us` | sint32 | Mean one-way delay of first slices in the window. |
 | 10 | `delay_samples` | uint32 | How many first slices the delays cover. |
 | 11 | `trains` | repeated `FrameTrain` | Arrival spread of large frames (below). |
+| 12 | `slices_expected` | uint64 | Data slices of the frames the client finished with in the window (below). |
+| 13 | `slices_lost` | uint64 | How many of those never arrived, before any recovery (below). |
+| 14 | `fec_recovered_frames` | uint32 | Frames in the window completed only by recovery from parity (§9.7). |
 
 **Loss.** A frame counts as lost when it was never completely
 reassembled, and also when it was reassembled but then discarded (the
@@ -1297,7 +1302,17 @@ be negative; only their changes mean anything. All three delay fields are
 
 A client that cannot measure fields 6–10 leaves them 0; the host
 recognizes that by `interval_us` being 0. `interval_us` is never 0 from a
-client that measures them.
+client that measures them. `bytes_received` counts parity datagrams
+(§9.7) as well as video ones.
+
+**Slices.** A client finishes with a frame when it completes it, from
+its slices or by recovery, and when it gives it up as lost (§9.3). For
+every frame it finished with in the window it adds the frame's
+`slice_count` to `slices_expected`, and the slices that had not arrived
+when it finished, or that recovery rebuilt, to `slices_lost`: the loss
+the path caused, which is what the host sizes its parity from. Frames
+none of whose datagrams arrived are not counted. A client that does not
+measure these leaves fields 12–14 0.
 
 **Frame trains.** A host sends each frame's datagrams back to back, so the
 spread the path puts between them measures its slowest hop.
@@ -1312,13 +1327,15 @@ spread the path puts between them measures its slowest hop.
 
 A client reports a train for a frame completed in the window only when
 every one of its datagrams arrived exactly once and there were at least
-16 of them, at most 8 trains per report. Arrival times are taken where the
+16 of them, at most 8 trains per report. A train counts video datagrams
+(channel 0x01) only, never parity. Arrival times are taken where the
 QUIC stack receives the datagrams, not where the application processes
 them. `bytes / span_us` estimates the rate of the path's slowest hop. A
 client that does not measure trains sends none.
 
-*Host behavior:* the reference host repairs each loss newly reported in
-the bitmap with a keyframe, unless a keyframe already sent or requested
+*Host behavior:* the reference host sizes its parity (§9.7) from
+`slices_lost` over `slices_expected`, and repairs each loss newly
+reported in the bitmap with a keyframe, unless a keyframe already sent or requested
 follows the lost frame, and no sooner than a minimum interval after the
 previous repair (which depends on the network profile). It sets the video
 bitrate from delay trend, loss and its own send backlog, and paces
@@ -2343,20 +2360,33 @@ path MTU less IP, UDP and QUIC overhead, capped by the peer's
 `max_datagram_frame_size`. The limit rises as QUIC's path MTU discovery
 confirms larger packets and can fall on a path change, so a sender reads
 it per frame. Until it is known, a sender uses 1100 bytes of slice
-payload, which fits within QUIC's 1200-byte minimum on any path.
+payload, which fits within QUIC's 1200-byte minimum on any path. With
+`fec` in effect a frame's parity datagrams (§9.7) carry shards exactly a
+slice long under a longer header, so the slice size is chosen for those
+to fit as well.
 
 ### 9.3 Reassembly
 
-A receiver keeps at most one frame in progress per `stream_id`:
+A receiver keeps a few frames in progress per `stream_id` (the
+reference client three), since datagrams may arrive out of order:
 
-- the frame's slice count is the `slice_count` of the first of its
-  slices to arrive; it places each slice by `slice_idx`, ignoring one
-  whose `slice_idx` is not below that count or which it already has;
-- a slice of a different `frame_id` discards the frame in progress
-  (nothing is retransmitted, so an incomplete older frame is lost) and
-  starts a new one;
-- the frame is complete when all `slice_count` slices have arrived; its
-  payload is the slices concatenated in `slice_idx` order.
+- a frame's slice count is the `slice_count` of the first of its
+  slices to arrive; the receiver places each slice by `slice_idx`,
+  ignoring one whose `slice_idx` is not below that count, whose
+  `slice_count` differs, or which it already has;
+- the frame is complete when all `slice_count` slices have arrived, or
+  when parity has rebuilt the rest (§9.7); its payload is the slices
+  concatenated in `slice_idx` order;
+- frames are completed in `frame_id` order: when one completes, every
+  older frame still in progress is lost (nothing is retransmitted), and
+  a datagram for a frame no newer than the last one completed is
+  ignored;
+- a slice of a new frame when the receiver already holds as many as it
+  keeps discards the oldest, which is lost.
+
+A receiver that keeps only one frame in progress, discarding it when a
+slice of another `frame_id` arrives, also conforms; it loses more frames
+to reordering.
 
 A receiver reports frames it never completed as lost (§7.5). After a loss
 it SHOULD discard non-keyframes until a keyframe arrives, or keep decoding
@@ -2479,6 +2509,90 @@ larger rectangles and, when change is too scattered for 255 clears, sends
 one clear over the bounding box rather than a `RESET`. It remembers each
 recent frame's layer and, on a reported loss, resends that frame's clears
 and re-sends its tiles if they are still current.
+
+### 9.7 Forward error correction
+
+With the capability `fec` in effect the host MAY follow a frame's data
+slices with parity datagrams, from which the client rebuilds lost slices
+without a keyframe or a round trip. They go on channel 0x04; a client
+without `fec` in effect drops them (§3.2). The frame's data slices are
+unchanged, so a client that ignores parity still decodes every frame
+that arrives whole.
+
+**Blocks.** A frame of `n` data slices (§9.2) is protected in
+`B = ⌈n / 64⌉` blocks, with no parity at all for a frame of more than
+255 × 64 slices. Slice `i` is data shard `⌊i / B⌋` of block `i mod B`, so
+a burst of consecutive losses spreads over every block; block `b` has
+`⌊n / B⌋` data shards, one more if `b < n mod B`. A shard is one slice's
+payload, the last slice zero-padded to the length of the others (the
+*shard length*).
+
+**Code.** Each block is a systematic Reed-Solomon code over GF(2⁸) with
+the reducing polynomial x⁸ + x⁴ + x³ + x² + 1 (0x11d). For a block of
+`k` data shards `d₀ … d₍ₖ₋₁₎`, parity shard `j` is, byte for byte,
+
+```
+p_j = Σ_i  d_i · 1 / ((255 − j) ⊕ i)
+```
+
+where ⊕ is xor (addition in the field) and the sum is xor too. A block
+has at most 255 shards, data and parity together. Any `k` of a block's
+shards determine the others, since every square submatrix of this
+Cauchy matrix is invertible.
+
+**Datagram.** Channel 0x04, a 19-byte header, then one parity shard of
+the shard length:
+
+```
+ 0          1          5           6             7             8            9              10      11       15          19
++----------+----------+-----------+-------------+-------------+------------+--------------+-------+--------+-----------+--------+
+| stream_id| frame_id | block_idx | block_count | data_shards | parity_idx | parity_count | flags | pts    | frame_len | shard  |
+| u8       | u32 LE   | u8        | u8          | u8          | u8         | u8           | u8    | u32 LE | u32 LE    | ...    |
++----------+----------+-----------+-------------+-------------+------------+--------------+-------+--------+-----------+--------+
+```
+
+- **`stream_id`**, **`frame_id`**, **`flags`**, **`pts`**: the frame's,
+  as its video datagrams carry them (§9.1), so that a frame all of whose
+  data slices were lost can still be rebuilt.
+- **`block_idx`**, **`block_count`**: this block, of `B`.
+- **`data_shards`**: the block's data shard count.
+- **`parity_idx`**, **`parity_count`**: this shard's `j`, and how many
+  parity shards the block has. Blocks may have different counts, and a
+  block may have none.
+- **`frame_len`**: the frame's payload length in bytes. The shard length
+  is the datagram's payload length, so `n = max(1, ⌈frame_len / shard
+  length⌉)`; the last slice is `frame_len − (n − 1) × shard length` bytes.
+
+A receiver MUST drop a parity datagram whose payload is empty or longer
+than a slice can be (§9.2), whose `block_idx` or `parity_idx` is not
+below its count, whose block has more than 255 shards, or whose
+`block_count` and `data_shards` are not what `frame_len` and the shard
+length imply. It MUST ignore one that disagrees with what the frame's
+other datagrams said (a different `slice_count`, shard length,
+`frame_len` or `parity_count`), and a duplicate.
+
+**Sending.** The host sends a frame's parity after all of its data
+slices, round-robin over the blocks like the data. A frame whose data
+all arrives is complete before its parity, which the client then
+ignores.
+
+**Recovery.** A block can be rebuilt once the data shards and parity
+shards that arrived number at least its data shard count; the frame is
+complete (§9.3) when every block that lost data can be. Every data slice
+that arrived must have the length the layout implies, or the frame
+cannot be recovered and only its slices can complete it. A recovered
+frame counts as received in `loss_bitmap` (§7.5) and in
+`fec_recovered_frames`.
+
+*Host behavior:* the reference host sizes parity per block as a
+fraction of its data shards, rounded up, at least one shard while the
+fraction isn't 0; keyframes get 1.5 times the fraction. The fraction
+starts at the network profile's floor (0 on `lan`, 5% on `internet`,
+15% on `mobile`), rises as soon as reported slice loss calls for more
+(three times the loss, plus 2%), comes back down slowly, and is raised
+further while frames still go unrecovered; it never exceeds 50%. The
+encoder's bitrate is the rate controller's target less what parity
+takes, so data and parity together stay within the target.
 
 ---
 
@@ -3107,6 +3221,9 @@ either side to the other; a client SHOULD let its user turn it off.
 | Refinement magic; version | 0x52; 1 | §9.5 |
 | Refinement clears per frame | 255 | §9.5 |
 | Refinement tile pixel bytes per frame | 64 MiB | §9.5 |
+| Parity header | 19 bytes (+1 channel) | §9.7 |
+| FEC data shards per block; blocks per frame; shards per block | 64; 255; 255 | §9.7 |
+| FEC field polynomial | 0x11d | §9.7 |
 | Audio header | 6 bytes (+1 channel) | §10 |
 | Audio format | Opus, 48 kHz, 2 channels, 10 ms | §6.8 |
 | Session clock | 32-bit µs, wraps after ~71.6 min | §11 |
@@ -3127,6 +3244,7 @@ every implementation listed for it.
 | ALPN, wire version | `libgdp/include/gdp/version.hpp`; `GDP_WIRE_VERSION` in `host/ghostd/src/lobby.rs` |
 | Framing | `libgdp/include/gdp/framing.hpp`; `host/ipc/src/framing.rs` |
 | Datagrams, slicing, reassembly | `libgdp/include/gdp/datagram.hpp`, `video_reassembler.hpp` |
+| Forward error correction (§9.7) | `libgdp/include/gdp/fec.hpp` (the code, and parity sending); `video_reassembler.hpp` (recovery); `host/wraith/src/session/fec_controller.cpp` (how much parity) |
 | Codec and capability negotiation | `libgdp/include/gdp/negotiation.hpp`, `video_codec.hpp`, `audio_format.hpp` |
 | Refinement container | `libgdp/include/gdp/refine.hpp`; `host/veil/app/refine.js` |
 | Clipboard rules | `libgdp/include/gdp/clipboard.hpp` |

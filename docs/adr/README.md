@@ -37,3 +37,4 @@ Status: Accepted (YYYY-MM-DD) | Superseded by NNNN
 | [0015](0015-security-keys-pass-through-with-a-fixed-descriptor.md) | Security keys pass through as FIDO HID, with the host's own descriptor |
 | [0016](0016-key-maintenance-by-consent.md) | A forwarded key's maintenance passes with its user's consent |
 | [0017](0017-smart-cards-forward-over-pcsc.md) | Smart cards forward over PC/SC, with writes by consent |
+| [0018](0018-video-fec-over-a-parity-channel.md) | Video FEC: Reed-Solomon parity on a channel of its own |

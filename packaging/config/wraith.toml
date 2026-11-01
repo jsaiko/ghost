@@ -39,6 +39,14 @@
 #pacing_multiplier = 10
 #pacing_floor_mbps = 500
 
+# Forward error correction: parity after each video frame, from which the
+# client rebuilds lost packets without waiting for a keyframe. "auto"
+# follows the loss the client reports (none on a LAN until there is
+# some); "off" sends none; "fixed" always sends fec_percent of each
+# frame's packets.
+#fec = "auto"
+#fec_percent = 20
+
 [encode]
 # Frames between periodic keyframes, or 0 (the default) for none at all
 # (an infinite GOP): only the first and the requested ones. Every lost

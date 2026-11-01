@@ -90,6 +90,7 @@ add_library(gdp STATIC
   src/worker.cpp
   src/refine.cpp
   src/video_reassembler.cpp
+  src/fec.cpp
   src/client_connection.cpp
   src/lobby_client.cpp
   src/transport/net_loop.cpp
@@ -143,6 +144,15 @@ enable_testing()
 add_executable(gdp_datagram_test tests/datagram_test.cpp)
 target_link_libraries(gdp_datagram_test PRIVATE gdp)
 add_test(NAME gdp_datagram_test COMMAND gdp_datagram_test)
+
+add_executable(gdp_fec_test tests/fec_test.cpp)
+target_link_libraries(gdp_fec_test PRIVATE gdp)
+add_test(NAME gdp_fec_test COMMAND gdp_fec_test)
+# The same on the lesser multiply-adds the CPU would otherwise skip.
+add_test(NAME gdp_fec_test_ssse3 COMMAND gdp_fec_test)
+set_tests_properties(gdp_fec_test_ssse3 PROPERTIES ENVIRONMENT GDP_FEC_ISA=ssse3)
+add_test(NAME gdp_fec_test_scalar COMMAND gdp_fec_test)
+set_tests_properties(gdp_fec_test_scalar PROPERTIES ENVIRONMENT GDP_FEC_ISA=scalar)
 
 add_executable(gdp_cert_fingerprint_test tests/cert_fingerprint_test.cpp)
 target_link_libraries(gdp_cert_fingerprint_test PRIVATE gdp)

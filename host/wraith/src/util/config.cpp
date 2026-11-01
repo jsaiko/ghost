@@ -280,12 +280,14 @@ ConfigLoad load_config(const std::string &path) {
 	next.log.level = level == "error" ? LogLevel::Error : level == "info" ? LogLevel::Info : LogLevel::Debug;
 
 	const toml::table *network = reader.section(root, "network",
-		{"congestion_control", "rate_trace", "pacing_multiplier", "pacing_floor_mbps"});
+		{"congestion_control", "rate_trace", "pacing_multiplier", "pacing_floor_mbps", "fec", "fec_percent"});
 	reader.choice(network, "network", "congestion_control", {"cubic", "bbr"},
 		&next.network.congestion_control);
 	reader.boolean(network, "network", "rate_trace", &next.network.rate_trace);
 	reader.integer(network, "network", "pacing_multiplier", 0, 100, &next.network.pacing_multiplier);
 	reader.integer(network, "network", "pacing_floor_mbps", 1, 100000, &next.network.pacing_floor_mbps);
+	reader.choice(network, "network", "fec", {"auto", "off", "fixed"}, &next.network.fec);
+	reader.integer(network, "network", "fec_percent", 1, 100, &next.network.fec_percent);
 
 	const toml::table *encode = reader.section(root, "encode",
 		{"gop", "max_bitrate_mbps", "force_software", "nvenc_zero_copy", "bit_depth", "pyrowave_bpp",
@@ -359,6 +361,8 @@ std::string describe_config(const WraithConfig &config) {
 		<< "rate_trace = " << flag(config.network.rate_trace) << "\n"
 		<< "pacing_multiplier = " << config.network.pacing_multiplier << "\n"
 		<< "pacing_floor_mbps = " << config.network.pacing_floor_mbps << "\n"
+		<< "fec = \"" << config.network.fec << "\"\n"
+		<< "fec_percent = " << config.network.fec_percent << "\n"
 		<< "\n[encode]\n"
 		<< "gop = " << config.encode.gop << "\n"
 		<< "max_bitrate_mbps = " << config.encode.max_bitrate_mbps << "\n"

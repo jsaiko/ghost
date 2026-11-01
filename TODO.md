@@ -25,6 +25,13 @@ Limitations section.
   ([browser client](docs/design/browser-client.md#limitations)): find
   the cause or file it upstream, then drop `video.js`'s software-decode
   workaround.
+- The browser client has no FEC (gdp-spec.md §9.7, ADR 0018): a GF(2⁸)
+  Reed-Solomon decoder in `video.js`'s reassembly (or WASM), parity
+  datagrams on channel 0x04, and `fec` offered. Until then every lost
+  frame costs it a keyframe.
+- Gateway sessions with `fec` are untested: that parity datagrams fit
+  the wraith leg's slices (Veil sizes it from the client leg) and that
+  the netem matrix through the gateway gains as direct sessions do.
 - The browser client has no file transfer (gdp-spec.md §7.12): offer
   `file`, send dropped files, and fetch the host's copied ones with a
   download button (a browser can't mount or paste them).
@@ -62,6 +69,13 @@ Limitations section.
   macOS's `UF_HIDDEN` and `/Volumes` not even compiled.
 
 ## Client
+
+- FEC (gdp-spec.md §9.7) has run on the netem harness only, on x86 with
+  AVX2 at both ends. Untested: a real Wi-Fi or mobile link, the SSSE3
+  and scalar paths outside the unit tests, NEON on an arm64 client (a
+  Mac, a Raspberry Pi Wisp image), MSVC's CPUID path (not compiled yet),
+  and the policy's constants (the per-profile floors, the 3x gain, 64
+  slices per block) beyond the harness's four lossy profiles.
 
 - Security keys (gdp-spec.md §8.7, ADR 0015) are tested end to end on
   Linux only (a YubiKey 5: a browser sign-in in a session on another

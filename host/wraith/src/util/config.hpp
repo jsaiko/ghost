@@ -85,6 +85,11 @@ struct WraithConfig {
 		// the buffer of any slower hop on the way. 0 turns pacing off.
 		uint32_t pacing_multiplier = 10;
 		uint32_t pacing_floor_mbps = 500;
+		// Parity on video (FecController): "auto" follows the loss the
+		// client reports, "off" sends none and doesn't offer the "fec"
+		// capability, "fixed" always sends fec_percent.
+		std::string fec = "auto";
+		uint32_t fec_percent = 20;
 	} network;
 
 	// [refine], and [refine.lan] / [refine.internet] / [refine.mobile]

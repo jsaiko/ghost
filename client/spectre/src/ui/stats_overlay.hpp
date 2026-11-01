@@ -39,6 +39,9 @@ struct StatsSample {
 	double rtt_ms = 0.0;         // QUIC's smoothed RTT
 	uint32_t lost_recent = 0;    // frames never fully reassembled, of the last...
 	uint32_t window_span = 0;    // ...this many frame_ids (up to 64)
+	// "fec" in effect, and the frames parity has rebuilt this session.
+	bool fec = false;
+	uint64_t fec_recovered = 0;
 	double video_mbps = 0.0;     // coded video received, megabits/s
 	std::string network_profile; // what -N asked for: "auto", "lan", "internet", "mobile"
 	// What wraith runs with (SessionClient::host_network_profile()), empty

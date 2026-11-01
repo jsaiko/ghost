@@ -62,7 +62,7 @@ anything else needs a restart, which ends every gateway session.
 
 `/etc/ghost/wraith.toml`, read by `host/wraith/src/util/config.cpp`:
 `[log] level`, `[network]` (congestion control, pacing, the rate
-trace), `[encode]` (GOP length, bitrate ceiling, forcing the software
+trace, forward error correction), `[encode]` (GOP length, bitrate ceiling, forcing the software
 encoder, NVENC's zero-copy input, the bit depth, PyroWave's ceiling, the
 highest frame rate a client may ask for, and which codecs are offered), `[refine]` (lossless refinement's settle time and
 bandwidth budget, with per-profile overrides in `[refine.lan]`,

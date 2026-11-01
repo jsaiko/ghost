@@ -26,6 +26,7 @@
 #include "session/raw_controllers.hpp"
 #include "session/security_keys.hpp"
 #include "session/smartcards.hpp"
+#include "session/fec_controller.hpp"
 #include "session/path_rate_estimator.hpp"
 #include "session/rate_controller.hpp"
 #include "session/session_host.hpp"
@@ -339,6 +340,11 @@ private:
 	// Paces the active connection's datagrams for the rate controller's
 	// current target ([network] pacing_multiplier / pacing_floor_mbps).
 	void apply_pacing();
+	// Hands the encoder its share of the rate controller's target: all of
+	// it, less what parity takes with "fec" in effect. `interval_us` is
+	// the report window FEC overhead was measured over (0: none). Only a
+	// real change reaches the encoder unless `force`.
+	void apply_bitrate(uint64_t interval_us, bool force);
 
 	SessionHost &host_;
 	TokenValidator token_validator_;
@@ -440,6 +446,15 @@ private:
 	} client_timing_;
 	// The path's slowest hop, from spectre's frame trains.
 	PathRateEstimator path_rate_;
+	// Parity on video (gdp-spec.md §9.7): null unless "fec" is in effect.
+	// fec_scratch_ holds a frame's parity while it goes out, and
+	// encoder_bps_ is the share of the rate controller's target last handed
+	// to the encoder (apply_bitrate()).
+	std::unique_ptr<FecController> fec_;
+	std::vector<uint8_t> fec_scratch_;
+	uint32_t encoder_bps_ = 0;
+	// The ratio last logged, so only real moves are.
+	double logged_fec_ratio_ = 0.0;
 	// Last slice size used, so a change (MTU discovery) is logged once.
 	size_t slice_payload_ = 0;
 	// wraith.toml's network.rate_trace: log every report's measurements
