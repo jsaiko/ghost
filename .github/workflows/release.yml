@@ -241,7 +241,7 @@ jobs:
   macos:
     name: macOS client (.dmg)
     needs: version
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       PACKAGE: ghost-client-${{ needs.version.outputs.version }}-macos-arm64
     steps:
@@ -261,7 +261,7 @@ jobs:
         id: vcpkg
         uses: ./.github/actions/setup-vcpkg
         with:
-          key-prefix: vcpkg-macos-arm64
+          key-prefix: vcpkg-macos-15-arm64
           files-hash: ${{ hashFiles('packaging/macos/vcpkg.json', 'packaging/macos/triplets/*') }}
 
       - name: Configure

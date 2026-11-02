@@ -114,7 +114,7 @@ jobs:
   # MoltenVK is only needed to actually present, so it isn't installed.
   macos-client:
     name: macOS client (build + test)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -132,7 +132,7 @@ jobs:
         id: vcpkg
         uses: ./.github/actions/setup-vcpkg
         with:
-          key-prefix: vcpkg-macos-arm64
+          key-prefix: vcpkg-macos-15-arm64
           files-hash: ${{ hashFiles('packaging/macos/vcpkg.json', 'packaging/macos/triplets/*') }}
 
       - name: Configure
