@@ -176,7 +176,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "authticket"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "base64",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "gdpnet"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "quinn",
@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "ghostauth"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "authticket",
  "ipc",
@@ -755,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "ghostd"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "authticket",
@@ -780,7 +780,7 @@ dependencies = [
 
 [[package]]
 name = "ghostlogin"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "ipc",
@@ -793,7 +793,7 @@ dependencies = [
 
 [[package]]
 name = "ghostseat"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "authticket",
@@ -1086,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "ipc"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "prost",
@@ -1411,7 +1411,7 @@ dependencies = [
 
 [[package]]
 name = "pamconv"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "ipc",
@@ -1490,7 +1490,7 @@ dependencies = [
 
 [[package]]
 name = "preauth"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "rand 0.9.5",
@@ -2409,7 +2409,7 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "tomlconf"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "nix",
@@ -2579,7 +2579,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "veil"
-version = "0.6.67"
+version = "0.6.68"
 dependencies = [
  "anyhow",
  "askama",

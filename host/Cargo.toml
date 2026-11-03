@@ -5,7 +5,7 @@ members = ["ipc", "gdpnet", "tomlconf", "pamconv", "preauth", "authticket", "gho
 # Every crate's version (version.workspace = true): the project's, from
 # the top-level CMakeLists.txt. `make bump V=x.y.z` changes both.
 [workspace.package]
-version = "0.6.67"
+version = "0.6.68"
 
 # Release builds are what hosts run (the top-level CMakeLists.txt picks this
 # profile for every build type but Debug); keep symbols so backtraces and
